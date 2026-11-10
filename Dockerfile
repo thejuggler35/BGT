@@ -20,6 +20,5 @@ COPY BGT_README.md ./
 
 USER app
 EXPOSE 8000
-VOLUME ["/data"]
 
 CMD ["sh", "-c", "exec python -m uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

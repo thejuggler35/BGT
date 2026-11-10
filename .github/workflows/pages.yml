@@ -1,0 +1,49 @@
+name: Deploy BGT to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Configure API endpoint
+        env:
+          BGT_API_BASE_URL: ${{ vars.BGT_API_BASE_URL }}
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const value = (process.env.BGT_API_BASE_URL || "").trim().replace(/\/+$/, "");
+          if (value) {
+            const endpoint = new URL(value);
+            if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password || endpoint.search || endpoint.hash) {
+              throw new Error("BGT_API_BASE_URL must be an HTTPS URL without credentials, query, or fragment.");
+            }
+          }
+          fs.writeFileSync("frontend/config.js", `window.BGT_API_BASE_URL = ${JSON.stringify(value)};\n`);
+          NODE
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,5 +1,6 @@
 const app = document.querySelector("#app");
 const toastRegion = document.querySelector("#toast-region");
+const API_BASE_URL = (window.BGT_API_BASE_URL || "").trim().replace(/\/+$/, "");
 const state = {
   page: "overview",
   rules: null,
@@ -72,7 +73,7 @@ async function api(path, options = {}) {
     const headerValue = ["Bear", "er"].join("") + " " + token;
     headers.set(headerName, headerValue);
   }
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
   const type = response.headers.get("content-type") || "";
   const payload = type.includes("application/json") ? await response.json() : null;
   if (!response.ok) {
@@ -804,7 +805,10 @@ async function init() {
       renderLogin("Your access token has expired or is not valid. Try again.");
       return;
     }
-    app.innerHTML = `<section class="review-not-found"><h1 class="page-title">Couldn’t load the workspace</h1><p class="page-description">${escapeHtml(error.message)} Check that the BGT backend is running, then refresh this page.</p></section>`;
+    const deploymentHelp = location.hostname.endsWith(".github.io") && !API_BASE_URL
+      ? " Set the BGT_API_BASE_URL repository variable to your HTTPS API address, then redeploy the Pages site."
+      : " Check that the BGT backend is running, then refresh this page.";
+    app.innerHTML = `<section class="review-not-found"><h1 class="page-title">Couldn’t load the workspace</h1><p class="page-description">${escapeHtml(error.message)}${escapeHtml(deploymentHelp)}</p></section>`;
   }
 }
 

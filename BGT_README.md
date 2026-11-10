@@ -35,11 +35,24 @@ The frontend loads DM Sans and Manrope from Google Fonts. The app itself and API
 
 ## Deploy
 
-### Render (persistent SQLite)
+### GitHub Pages (frontend)
 
-The included [`render.yaml`](./render.yaml) creates a single-instance web service and a persistent 1 GB disk for SQLite. In Render, create a **Blueprint** from this repository and review the generated `BGT_API_TOKEN` secret before deploying. The token is required to sign in to a deployed workspace; share it only with trusted reviewers over HTTPS. The first run seeds the demo rules once, and the mounted disk keeps reviews across redeploys.
+The GitHub Actions workflow in `.github/workflows/pages.yml` publishes the `frontend` directory whenever changes are pushed to `main`. Enable **Settings → Pages → Build and deployment → GitHub Actions** in the repository. The public site URL is `https://thejuggler35.github.io/BGT/`.
 
-SQLite is designed here for one application instance. Do not increase the replica count or attach multiple app instances to this database; use a shared database such as PostgreSQL before scaling horizontally. Keep the persistent disk and back up `/var/data/bgt.sqlite3` before destructive infrastructure changes.
+GitHub Pages serves static files only. BGT's review, guidelines, and history features also need the FastAPI backend below. GitHub Pages sites are public; with GitHub Free, the repository must also be public. Do not publish private data or credentials in the site.
+
+### FastAPI backend (Railway)
+
+Railway can build the root `Dockerfile` from this GitHub repository. Create a Railway service from the repository, attach a persistent volume at `/data`, and set these service variables:
+
+- `BGT_DATABASE_PATH=/data/bgt.sqlite3`
+- `BGT_API_TOKEN` to a private random value of at least 32 characters
+- `BGT_CORS_ORIGINS=https://thejuggler35.github.io`
+- `RAILWAY_RUN_UID=0` so the container can write to the mounted volume
+
+Use the Railway-generated HTTPS domain as the API base URL. In GitHub, add a repository Actions variable named `BGT_API_BASE_URL` with that URL (no trailing slash). Push a commit or run **Actions → Deploy BGT to GitHub Pages** again after setting the variable. The API URL is public configuration; never put the access token in a GitHub Pages variable or frontend file.
+
+Keep the backend to one instance when using SQLite and a persistent volume. Railway volume and compute charges depend on the plan and usage; review current pricing before deployment.
 
 ### Docker
 
@@ -52,7 +65,7 @@ docker run --name bgt -p 8000:8000 `
 
 Open <http://localhost:8000>. Mount `/data` on a persistent volume: the container filesystem is not a database backup. Set `BGT_DATABASE_PATH` to a writable mounted path if you use a different mount. The container runs as a non-root user and reads the platform-provided `PORT`.
 
-For other hosting providers, run `python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT`, set a persistent `BGT_DATABASE_PATH`, and configure a strong random `BGT_API_TOKEN`. Deploy one instance and enable HTTPS.
+For another backend provider, run `python -m uvicorn backend.main:app --host 0.0.0.0 --port $PORT`, set a persistent `BGT_DATABASE_PATH`, and configure a strong random `BGT_API_TOKEN` and `BGT_CORS_ORIGINS`. Deploy one instance and enable HTTPS.
 
 ## Demo workflow
 

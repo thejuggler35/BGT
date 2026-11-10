@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -27,13 +28,23 @@ app = FastAPI(title="BGT", version="1.0.0", lifespan=lifespan)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024
+cors_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.environ.get("BGT_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 
 @app.middleware("http")
 async def protect_api_and_set_headers(request: Request, call_next):
     protected_paths = {"/api/health", "/api/auth/config", "/api/auth/session"}
     expected_token = os.environ.get("BGT_API_TOKEN", "")
-    if expected_token and request.url.path.startswith("/api/") and request.url.path not in protected_paths:
+    if (
+        expected_token
+        and request.method != "OPTIONS"
+        and request.url.path.startswith("/api/")
+        and request.url.path not in protected_paths
+    ):
         auth_header = request.headers.get("authorization", "")
         scheme, _, supplied_token = auth_header.partition(" ")
         if scheme.lower() != "bearer" or not hmac.compare_digest(supplied_token, expected_token):
@@ -69,6 +80,14 @@ async def protect_api_and_set_headers(request: Request, call_next):
             "frame-ancestors 'none'; form-action 'self'"
         )
     return response
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 def _serialize_finding(row):

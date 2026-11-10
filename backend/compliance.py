@@ -97,7 +97,7 @@ def check_content(text, rules):
                 "matched_text": ", ".join(uppercase_words[:6]),
                 "explanation": (
                     "Several all-caps words may read as shouting. This is a transparent style heuristic, "
-                    "not an AI assessment or a confirmed brand violation."
+                    "not a confirmed brand violation."
                 ),
                 "evidence": f"Detected all-caps words: {', '.join(uppercase_words[:6])}.",
                 "guideline": f"Brand voice: {', '.join(rules['brand_voice'])}. {rules['tone_characteristics']}".strip(),

@@ -196,7 +196,7 @@ function renderConnectionError(error, needsConfiguration = false) {
       ${detail}
       <div class="connection-actions">
         <button class="button button-primary" type="button" data-action="${needsConfiguration ? "reload-page" : "retry-connection"}">${needsConfiguration ? "Refresh after deployment" : "Try again"}</button>
-        <a class="button button-secondary" href="https://github.com/thejuggler35/BGT/blob/main/BGT_README.md#fastapi-backend-railway" target="_blank" rel="noreferrer">Backend setup guide</a>
+        <a class="button button-secondary" href="https://github.com/thejuggler35/BGT/blob/main/readme.md#website-and-backend" target="_blank" rel="noreferrer">Backend setup guide</a>
       </div>
       <p class="connection-footnote">Your reviews and brand guidelines are not available until the backend is connected.</p>
     </div>

@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r backend/requirements.txt \
 
 COPY backend/ backend/
 COPY frontend/ frontend/
-COPY BGT_Studio_README.md ./
+COPY BGT_README.md ./
 
 USER app
 EXPOSE 8000

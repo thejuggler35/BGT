@@ -10,7 +10,6 @@ const state = {
   reviewMode: "text",
   draftText: "",
   uploadFile: null,
-  sampleDraft: false,
   authRequired: false,
 };
 
@@ -94,34 +93,6 @@ function toast(message, error = false) {
   window.setTimeout(() => node.remove(), 3600);
 }
 
-function animatePage() {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const page = document.querySelector(".page-enter");
-  const animatedItems = document.querySelectorAll(".metric-card, .panel, .form-panel, .guide-card");
-  if (window.gsap && page) {
-    gsap.fromTo(page, { opacity: 0, y: 7 }, { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" });
-    if (animatedItems.length) gsap.fromTo(animatedItems, { opacity: 0.5, y: 7 }, {
-      opacity: 1, y: 0, duration: 0.32, stagger: 0.045, ease: "power2.out", delay: 0.04,
-    });
-    syncBrandChrome();
-  }
-  if (window.anime && document.querySelector(".metric-value")) {
-    anime({
-      targets: ".metric-value",
-      scale: [0.97, 1],
-      duration: 420,
-      easing: "easeOutQuad",
-      delay: anime.stagger(55),
-    });
-  }
-}
-
-function animateAction(target) {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !window.anime || !target) return;
-  anime.remove(target);
-  anime({ targets: target, scale: [1, 0.97, 1], duration: 260, easing: "easeOutQuad" });
-}
-
 function setBreadcrumb(label) {
   document.querySelector("#breadcrumbs").innerHTML =
     `<span>Workspace</span><span class="crumb-separator">/</span><strong>${escapeHtml(label)}</strong>`;
@@ -143,7 +114,6 @@ function setActiveNav(page) {
 }
 
 function navigate(page, options = {}) {
-  if (page === "new" && options.sample) state.sampleDraft = true;
   const hash = page === "review" ? `#/review/${options.id}` : `#/${page}`;
   if (window.location.hash === hash) renderRoute();
   else window.location.hash = hash;
@@ -180,7 +150,6 @@ function renderRoute() {
   if (route.page === "history") renderHistory();
   if (route.page === "guide") renderGuide();
   if (route.page === "review") loadReview(route.id);
-  animatePage();
 }
 
 function renderLogin(errorMessage = "") {
@@ -188,7 +157,7 @@ function renderLogin(errorMessage = "") {
   syncAuthChrome();
   app.innerHTML = `<section class="login-layout page-enter">
     <div class="login-card">
-      <span class="brand-mark login-mark">B<span>.</span></span>
+      <img class="brand-mark login-mark" src="static/bgt-logo.png" alt="BGT">
       <p class="eyebrow"><span class="eyebrow-dot"></span> PRIVATE WORKSPACE</p>
       <h1 class="page-title">Welcome back</h1>
       <p class="page-description">Enter your workspace access token to open your brand guidelines and review history.</p>
@@ -238,9 +207,8 @@ function renderOverview() {
   app.innerHTML = `<section class="page-enter">
     <div class="welcome-strip">
       <div class="welcome-copy">
-        <p class="eyebrow"><span class="eyebrow-dot"></span> ${escapeHtml(state.rules.brand_name.toUpperCase())} WORKSPACE</p>
-        <h1>Welcome to your workspace</h1>
-        <p>Keep every draft clear, consistent, and true to your brand.</p>
+        <h1>Your review workspace</h1>
+        <p>Check drafts against your approved brand guidelines.</p>
       </div>
       <div class="welcome-action"><button class="button button-primary" data-action="new-review">${icon("scan")} Start a review <span class="button-icon">↗</span></button></div>
     </div>
@@ -249,24 +217,12 @@ function renderOverview() {
       ${metricCard("Awaiting review", awaiting, "Human decision still needed", "clock")}
       ${metricCard("Brand guidelines", guidelineCount, "Terms and approved product facts", "book")}
     </div>
-    <div class="dashboard-grid">
-      <section class="panel page-enter">
-        <div class="panel-heading"><div><h2>Recent reviews</h2><p>Your latest saved content checks</p></div><a class="text-link" href="#/history">View history →</a></div>
-        ${recent.length
-          ? `<div class="panel-body">${recent.map(reviewRow).join("")}</div>`
-          : `<div class="empty-state">${iconWrapper("file")}<strong>Your review history starts here</strong><p>Check a draft to see evidence-linked findings and keep a record of the human decision.</p><button class="button button-secondary button-small" data-action="new-review">Create your first review</button></div>`}
-      </section>
-      <section class="panel page-enter">
-        <div class="panel-heading"><div><h2>Quick start</h2><p>A simple, transparent workflow</p></div></div>
-        <div class="quick-start-list">
-          <div class="quick-start-item"><span class="step-number">01</span><div><strong>Set your standard</strong><p>Add terms and verified facts to brand guidelines.</p></div></div>
-          <div class="quick-start-item"><span class="step-number">02</span><div><strong>Check a draft</strong><p>Paste copy or upload a PDF or DOCX file.</p></div></div>
-          <div class="quick-start-item"><span class="step-number">03</span><div><strong>Make the call</strong><p>Review evidence, then approve or request changes.</p></div></div>
-          <button class="text-link demo-link" type="button" data-action="sample-review">Try the sample AURA draft →</button>
-        </div>
-      </section>
-    </div>
-    <div class="human-note">${icon("shield")}<span>BGT is a review assistant. A flag is a prompt to investigate—not proof of a violation. Your team always makes the final call.</span></div>
+    <section class="panel">
+      <div class="panel-heading"><div><h2>Recent reviews</h2><p>Your latest saved reviews</p></div><a class="text-link" href="#/history">View history</a></div>
+      ${recent.length
+        ? `<div class="panel-body">${recent.map(reviewRow).join("")}</div>`
+        : `<div class="empty-state">${iconWrapper("file")}<strong>No reviews yet</strong><p>Start a review to check a draft against your brand guidelines.</p><button class="button button-secondary button-small" data-action="new-review">Start a review</button></div>`}
+    </section>
   </section>`;
 }
 
@@ -393,7 +349,6 @@ async function saveBrand(event) {
     });
     toast("Brand guidelines saved.");
     renderBrand();
-    animatePage();
     const newStatus = document.querySelector("#brand-save-status");
     if (newStatus) newStatus.textContent = "Saved just now";
   } catch (error) {
@@ -414,7 +369,7 @@ function setReviewMode(mode) {
 }
 
 function renderTextEditor() {
-  const draftText = state.sampleDraft ? "AURA Energy has 100mg caffeine per can and guaranteed results that cure fatigue all day. Try it NOW for an AMAZING boost!" : state.draftText;
+  const draftText = state.draftText;
   return `<div class="editor-wrap"><textarea class="text-area" id="draft-text" maxlength="200000" placeholder="Paste a draft here. BGT will compare its language and claims with your saved guidelines.">${escapeHtml(draftText)}</textarea>
     <div class="editor-toolbar"><span>Draft stays unchanged until you choose to edit it.</span><span><b id="word-count">0</b> words&nbsp; · &nbsp;<b id="character-count">0</b> characters</span></div>
     <div class="editor-submit"><button class="button button-quiet button-small" type="button" data-action="clear-draft">Clear draft</button><span class="validation-message" id="review-error"></span><button class="button button-primary" type="button" data-action="submit-review">Run brand check <span class="button-icon">→</span></button></div>
@@ -453,7 +408,6 @@ function renderNewReview() {
       </aside>
     </div>
   </section>`;
-  state.sampleDraft = false;
   updateDraftCounts();
 }
 
@@ -584,7 +538,7 @@ function reviewDecision(review) {
     return `<section class="panel decision-panel"><div class="decision-summary">${icon(review.status === "approved" ? "check" : "edit")}<span><strong>${review.status === "approved" ? "Review approved by a human" : "Changes requested by a human"}</strong>${review.decision_note ? escapeHtml(review.decision_note) : `Decision recorded ${formatDate(review.decided_at)}.`}</span></div></section>`;
   }
   return `<section class="panel decision-panel">
-    <div class="decision-copy"><h2>Human review</h2><p>The draft is never approved automatically—even when no checks raise a finding.</p></div>
+    <div class="decision-copy"><h2>Human review</h2><p>A person makes the final decision, even when no checks raise a finding.</p></div>
     <textarea class="text-area" id="decision-note" maxlength="1000" placeholder="Optional reviewer note for the history record"></textarea>
     <div class="decision-actions"><button class="button button-secondary button-small" data-action="decide" data-status="changes_requested">Request changes</button><button class="button button-primary button-small" data-action="decide" data-status="approved">${icon("check")} Approve review</button></div>
   </section>`;
@@ -599,7 +553,6 @@ async function loadReview(id) {
       state.selectedFindingId = review.findings[0]?.id || null;
     }
     renderReview(review);
-    animatePage();
   } catch (error) {
     app.innerHTML = `<section class="review-not-found"><h1 class="page-title">Review unavailable</h1><p class="page-description">${escapeHtml(error.message)}</p><button class="button button-secondary" data-action="go-history">Back to review history</button></section>`;
   }
@@ -657,7 +610,6 @@ async function saveDecision(status) {
   if (index >= 0) state.reviews[index] = updated;
   toast(status === "approved" ? "Human approval recorded." : "Change request recorded.");
   renderReview(updated);
-  animatePage();
 }
 
 function renderGuide() {
@@ -671,7 +623,7 @@ function renderGuide() {
       <article class="guide-card"><span class="section-index">05</span><h2>Know the limits</h2><p>Checks are deterministic phrase and numeric comparisons plus a basic capitalization heuristic. They do not understand legal context or replace expert review.</p></article>
       <article class="guide-card"><span class="section-index">06</span><h2>Keep your data local</h2><p>This MVP stores reviews and brand rules in a local SQLite database. Uploaded documents are read for text extraction and not kept as binary files.</p></article>
     </div>
-    <div class="human-note">${icon("shield")}<span>A flag is a prompt to review—not proof of a violation. BGT does not publish content, connect an LLM, or send your draft to an external service.</span></div>
+    <div class="human-note">${icon("shield")}<span>Findings are prompts for review, not confirmed violations. BGT does not publish content or send drafts to an external service.</span></div>
   </section>`;
 }
 
@@ -702,9 +654,7 @@ document.addEventListener("click", async (event) => {
   }
   const action = target.dataset.action;
   try {
-    animateAction(target);
     if (action === "new-review") navigate("new");
-    if (action === "sample-review") navigate("new", { sample: true });
     if (action === "go-history") navigate("history");
     if (action === "choose-file") document.querySelector("#document-file")?.click();
     if (action === "clear-draft") {

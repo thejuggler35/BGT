@@ -46,7 +46,7 @@ def _fact_findings(text, facts):
                             f"The draft states {match.group(0)}, while the saved product fact "
                             f"records {expected:g} {fact['unit']}."
                         ),
-                        "evidence": f"Approved: {fact['product']} — {fact['fact']}: {expected:g} {fact['unit']}.",
+                        "evidence": f"Approved: {fact['product']}: {fact['fact']}, {expected:g} {fact['unit']}.",
                         "guideline": f"{fact['product']} / {fact['fact']}",
                         "suggestion": f"Update the claim to {expected:g} {fact['unit']} or confirm it with a reviewer.",
                     }

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: bgt-studio
+    name: bgt
     runtime: python
     plan: starter
     buildCommand: python -m pip install -r backend/requirements.txt

@@ -1,6 +1,6 @@
-# Build BGT Studio — Brand Governance Technology
+# BGT | Brand Governance Technology
 
-Act as a senior full-stack developer, UI/UX designer, and product architect. Build a complete, functional MVP website called **BGT Studio (Brand Governance Technology)** from scratch.
+Act as a senior full-stack developer, UI/UX designer, and product architect. Build a complete, functional MVP website called **BGT (Brand Governance Technology)** from scratch.
 
 The project is for **Team Optimus Prime**.
 
@@ -65,12 +65,9 @@ Create a premium, restrained, modern B2B SaaS design.
 The website should feel like a real product designed by a professional product design team.
 
 Visual direction:
-- Warm off-white background: #F7F8F5
-- Deep navy: #18334A
+- Black and white palette with restrained greys
 - White surfaces
-- Muted green for approved or positive states
-- Muted amber for warnings
-- Muted red for important issues
+- Grayscale status indicators
 - Thin, subtle borders
 - Consistent spacing
 - Soft, restrained shadows
@@ -365,7 +362,7 @@ Verified facts:
 - AURA Energy: 250ml per can.
 - AURA Zero: zero added sugar.
 
-Create a sample draft:
+Example draft for testing:
 
 "AURA Energy has 100mg caffeine per can and guaranteed results that cure fatigue all day. Try it NOW for an AMAZING boost!"
 
@@ -381,7 +378,7 @@ Explain every finding using the saved brand rules or clearly identified heuristi
 
 Use a clean project structure similar to:
 
-bgt-studio/
+bgt/
   backend/
     main.py
     database.py

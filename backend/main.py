@@ -23,7 +23,7 @@ async def lifespan(_app):
     yield
 
 
-app = FastAPI(title="BGT Studio", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="BGT", version="1.0.0", lifespan=lifespan)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024

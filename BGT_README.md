@@ -1,8 +1,8 @@
-# BGT Studio
+# BGT
 
 BGT (Brand Governance Technology) is a local-first review assistant for checking draft copy against a team's own approved brand guidelines. It is built for Team Optimus Prime's hackathon MVP and follows the project brief in `readme.md` and `BGT_Hackathon_Round1_Improved.pdf`.
 
-The interface is a responsive, vanilla HTML/CSS/JavaScript app. A FastAPI REST API and SQLite database persist brand rules, product facts, review findings, and human decisions. GSAP handles restrained page entrances; anime.js adds a small metric/action interaction. Neither animation library is required for the review workflow.
+The interface is a responsive, vanilla HTML/CSS/JavaScript app. A FastAPI REST API and SQLite database persist brand rules, product facts, review findings, and human decisions.
 
 ## Features
 
@@ -31,7 +31,7 @@ Open <http://127.0.0.1:8000>. The API health check is at <http://127.0.0.1:8000/
 
 The database is created as `bgt.sqlite3` in the project root on first run. Set `BGT_DATABASE_PATH` to use a different SQLite file. The first run seeds the fictional AURA Beverages workspace; later runs preserve saved rules and reviews.
 
-The frontend loads DM Sans/Manrope from Google Fonts and GSAP/anime.js from public CDNs. The app itself and API run locally; without an internet connection the external fonts and animation enhancements may not load.
+The frontend loads DM Sans and Manrope from Google Fonts. The app itself and API run locally; without an internet connection, the external fonts may not load.
 
 ## Deploy
 
@@ -44,10 +44,10 @@ SQLite is designed here for one application instance. Do not increase the replic
 ### Docker
 
 ```powershell
-docker build -t bgt-studio .
-docker run --name bgt-studio -p 8000:8000 `
+docker build -t bgt .
+docker run --name bgt -p 8000:8000 `
   -e BGT_API_TOKEN="replace-with-a-long-random-secret" `
-  -v bgt-data:/data bgt-studio
+  -v bgt-data:/data bgt
 ```
 
 Open <http://localhost:8000>. Mount `/data` on a persistent volume: the container filesystem is not a database backup. Set `BGT_DATABASE_PATH` to a writable mounted path if you use a different mount. The container runs as a non-root user and reads the platform-provided `PORT`.
@@ -61,7 +61,7 @@ For other hosting providers, run `python -m uvicorn backend.main:app --host 0.0.
 3. Inspect each finding's excerpt, evidence, and related guideline. Edit or copy a suggestion, resolve or accept a finding, or dismiss it.
 4. Record **Approve review** or **Request changes**. The reviewer decision and findings remain available under **Review history**.
 
-The seeded demo includes the AURA product facts and restricted/preferred language. The sample draft in the New review form demonstrates a restricted-phrase match, a caffeine-value mismatch, and a capitalization prompt.
+The seeded demo includes the AURA product facts and restricted/preferred language.
 
 ## API
 

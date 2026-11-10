@@ -40,10 +40,15 @@ jobs:
           }
           fs.writeFileSync("frontend/config.js", `window.BGT_API_BASE_URL = ${JSON.stringify(value)};\n`);
           NODE
+      - name: Package site
+        run: |
+          mkdir -p _site/static
+          cp frontend/index.html _site/index.html
+          cp frontend/app.js frontend/config.js frontend/styles.css frontend/bgt-logo.png _site/static/
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend
+          path: _site
       - name: Deploy site
         id: deployment
         uses: actions/deploy-pages@v4

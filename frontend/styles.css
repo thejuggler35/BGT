@@ -73,6 +73,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .topbar-actions { display: flex; align-items: center; gap: 16px; }
 .status-indicator { display: flex; align-items: center; gap: 7px; color: #767676; font-size: 11px; }
 .status-indicator i { width: 7px; height: 7px; border-radius: 50%; background: #8a8a8a; box-shadow: 0 0 0 3px #ececec; }
+.status-indicator.is-error { color: #555555; }
+.status-indicator.is-error i { background: #555555; box-shadow: 0 0 0 3px #e8e8e8; }
 .topbar-divider { width: 1px; height: 19px; background: var(--line-strong); }
 .topbar-date { color: #939393; font-size: 11px; }
 .icon-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #7e7e7e; cursor: pointer; transition: background .2s ease, color .2s ease; }
@@ -86,6 +88,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .login-card .page-title { font-size: 26px; }
 .login-form { display: grid; gap: 13px; margin-top: 24px; }
 .login-form .button { width: 100%; }
+.connection-layout { display: grid; min-height: calc(100vh - 150px); place-items: center; padding: 20px 0; }
+.connection-card { width: min(580px, 100%); padding: clamp(24px, 5vw, 42px); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+.connection-mark { display: grid; width: 42px; height: 42px; place-items: center; margin-bottom: 25px; border: 1px solid var(--line); border-radius: 9px; background: #f7f7f7; color: #555555; }
+.connection-mark svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
+.connection-card .page-title { max-width: 450px; font-size: clamp(24px, 3vw, 30px); }
+.connection-card .page-description { max-width: 470px; margin-top: 12px; }
+.connection-detail { display: grid; gap: 5px; margin-top: 24px; padding: 14px 15px; border: 1px solid var(--line); border-radius: 7px; background: #fafafa; }
+.connection-detail strong { color: #454545; font-size: 12px; font-weight: 600; }
+.connection-detail span { color: #777777; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.connection-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 20px; }
+.connection-footnote { margin: 20px 0 0; color: #969696; font-size: 10px; line-height: 1.5; }
 .loader { width: 17px; height: 17px; border: 2px solid #e4e4e4; border-top-color: #717171; border-radius: 50%; animation: spin .75s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 

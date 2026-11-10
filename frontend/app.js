@@ -48,6 +48,13 @@ function syncBrandChrome() {
   if (workspaceInitial) workspaceInitial.textContent = name.trim().charAt(0).toUpperCase() || "B";
 }
 
+function setWorkspaceStatus(label, disconnected = false) {
+  const status = document.querySelector(".status-indicator");
+  if (!status) return;
+  status.classList.toggle("is-error", disconnected);
+  status.querySelector("span").textContent = label;
+}
+
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -168,6 +175,30 @@ function renderLogin(errorMessage = "") {
             <button class="button button-primary" type="submit">Sign in <span class="button-icon">→</span></button>
       </form>
       <div class="human-note">${icon("shield")}<span>Your token is kept in this browser tab only and cleared when you close it.</span></div>
+    </div>
+  </section>`;
+}
+
+function renderConnectionError(error, needsConfiguration = false) {
+  setWorkspaceStatus("Backend unavailable", true);
+  const description = needsConfiguration
+    ? "This site is hosted on GitHub Pages, which serves the interface but cannot run BGT’s API. Connect a backend to load guidelines, reviews, and workspace data."
+    : "The BGT interface loaded, but its API could not be reached. Check the backend connection and try again.";
+  const detail = needsConfiguration
+    ? `<div class="connection-detail"><strong>Backend URL not configured</strong><span>Deploy the FastAPI service, then add its HTTPS address as the BGT_API_BASE_URL Actions variable and redeploy Pages.</span></div>`
+    : `<div class="connection-detail"><strong>Connection details</strong><span>${error.status === 404 ? "The configured server returned 404. Check that BGT_API_BASE_URL points to the BGT API root." : `${escapeHtml(error.message)} Check that the backend is running and allows requests from this site.`}</span></div>`;
+  app.innerHTML = `<section class="connection-layout page-enter" aria-labelledby="connection-title">
+    <div class="connection-card">
+      <div class="connection-mark">${icon(needsConfiguration ? "shield" : "x")}</div>
+      <p class="eyebrow"><span class="eyebrow-dot"></span> WORKSPACE CONNECTION</p>
+      <h1 class="page-title" id="connection-title">${needsConfiguration ? "Connect your BGT workspace" : "We can’t reach BGT right now"}</h1>
+      <p class="page-description">${description}</p>
+      ${detail}
+      <div class="connection-actions">
+        <button class="button button-primary" type="button" data-action="${needsConfiguration ? "reload-page" : "retry-connection"}">${needsConfiguration ? "Refresh after deployment" : "Try again"}</button>
+        <a class="button button-secondary" href="https://github.com/thejuggler35/BGT/blob/main/BGT_README.md#fastapi-backend-railway" target="_blank" rel="noreferrer">Backend setup guide</a>
+      </div>
+      <p class="connection-footnote">Your reviews and brand guidelines are not available until the backend is connected.</p>
     </div>
   </section>`;
 }
@@ -655,6 +686,16 @@ document.addEventListener("click", async (event) => {
   }
   const action = target.dataset.action;
   try {
+    if (action === "reload-page") {
+      window.location.reload();
+      return;
+    }
+    if (action === "retry-connection") {
+      target.disabled = true;
+      target.textContent = "Checking…";
+      await init();
+      return;
+    }
     if (action === "new-review") navigate("new");
     if (action === "go-history") navigate("history");
     if (action === "choose-file") document.querySelector("#document-file")?.click();
@@ -787,6 +828,12 @@ async function init() {
     const name = node.dataset.icon;
     node.innerHTML = icon(name);
   });
+  setWorkspaceStatus("Connecting");
+  const needsConfiguration = location.hostname.endsWith(".github.io") && !API_BASE_URL;
+  if (needsConfiguration) {
+    renderConnectionError(null, true);
+    return;
+  }
   try {
     const config = await api("/api/auth/config");
     state.authRequired = config.required;
@@ -798,6 +845,7 @@ async function init() {
     if (health.status !== "ok") throw new Error("The BGT API did not report a healthy status.");
     state.rules = rules;
     state.reviews = reviews;
+    setWorkspaceStatus("Workspace active");
     renderRoute();
   } catch (error) {
     if (error.status === 401 && state.authRequired) {
@@ -805,10 +853,7 @@ async function init() {
       renderLogin("Your access token has expired or is not valid. Try again.");
       return;
     }
-    const deploymentHelp = location.hostname.endsWith(".github.io") && !API_BASE_URL
-      ? " Set the BGT_API_BASE_URL repository variable to your HTTPS API address, then redeploy the Pages site."
-      : " Check that the BGT backend is running, then refresh this page.";
-    app.innerHTML = `<section class="review-not-found"><h1 class="page-title">Couldn’t load the workspace</h1><p class="page-description">${escapeHtml(error.message)}${escapeHtml(deploymentHelp)}</p></section>`;
+    renderConnectionError(error);
   }
 }
 

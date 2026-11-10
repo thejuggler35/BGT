@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f7f4">
+    <meta name="description" content="BGT Studio helps teams review content against approved brand guidelines.">
+    <title>BGT Studio — Brand governance, made practical</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+        <a class="brand-lockup" href="#/overview" aria-label="BGT Studio overview">
+          <span class="brand-mark">B<span>.</span></span>
+          <span class="brand-wordmark">bgt<span>studio</span></span>
+        </a>
+
+        <div class="workspace-card">
+          <span class="workspace-avatar" id="workspace-initial">A</span>
+          <span class="workspace-copy"><strong id="workspace-name">AURA Beverages</strong><small>Brand workspace</small></span>
+        </div>
+
+        <p class="nav-label">WORKSPACE</p>
+        <nav class="primary-nav">
+          <a class="nav-link" href="#/overview" data-route="overview"><span class="nav-icon" data-icon="overview"></span><span>Overview</span></a>
+          <a class="nav-link" href="#/brand" data-route="brand"><span class="nav-icon" data-icon="book"></span><span>Brand guidelines</span></a>
+          <a class="nav-link" href="#/new" data-route="new"><span class="nav-icon" data-icon="scan"></span><span>New review</span><span class="nav-shortcut">↗</span></a>
+          <a class="nav-link" href="#/history" data-route="history"><span class="nav-icon" data-icon="history"></span><span>Review history</span></a>
+        </nav>
+
+        <div class="sidebar-bottom">
+          <div class="help-card">
+            <span class="help-icon" data-icon="help"></span>
+            <div><strong>Need a hand?</strong><p>Learn how BGT reviews content.</p></div>
+            <a href="#/guide" data-route="guide" aria-label="Open quick guide">↗</a>
+          </div>
+          <div class="profile-row">
+            <span class="profile-avatar">OP</span>
+            <span class="profile-copy"><strong>Team Optimus Prime</strong><small>Workspace team</small></span>
+          </div>
+        </div>
+      </aside>
+
+      <div class="mobile-backdrop" id="mobile-backdrop"></div>
+      <main class="main-shell">
+        <header class="topbar">
+          <button class="mobile-menu icon-button" id="mobile-menu" aria-label="Open navigation" aria-expanded="false">
+            <span class="hamburger"></span>
+          </button>
+          <div class="breadcrumbs" id="breadcrumbs"><span>Workspace</span><span class="crumb-separator">/</span><strong>Overview</strong></div>
+          <div class="topbar-actions">
+            <span class="status-indicator"><i></i><span>Workspace active</span></span>
+            <span class="topbar-divider"></span>
+            <span class="topbar-date" id="topbar-date"></span>
+            <button class="button button-quiet button-small sign-out-button" id="sign-out" type="button" hidden>Sign out</button>
+            <button class="icon-button topbar-help" id="header-help" aria-label="Quick guide"><span data-icon="help"></span></button>
+          </div>
+        </header>
+        <div class="page-container" id="app" aria-live="polite">
+          <div class="loading-view"><span class="loader"></span><span>Loading your workspace…</span></div>
+        </div>
+        <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
+      </main>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js" integrity="sha384-g4NTh/Iv5PPU4xPyhEWqPcwtNXOvdaDI8LLnyYfyNZOjKJeYQyjzQ9X5275eBjpt" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js" integrity="sha384-/Mc/2ffICYME94wcPOYwoL99IzpbvFsDTty0/5V5t22x2n26tp8JRSsxKjvgZuZs" crossorigin="anonymous"></script>
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

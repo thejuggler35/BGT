@@ -43,8 +43,16 @@ jobs:
       - name: Package site
         run: |
           mkdir -p _site/static
-          cp frontend/index.html _site/index.html
           cp frontend/app.js frontend/config.js frontend/styles.css frontend/bgt-logo.png _site/static/
+          GITHUB_SHA="$GITHUB_SHA" node <<'NODE'
+          const fs = require("node:fs");
+          const version = process.env.GITHUB_SHA;
+          if (!version) throw new Error("GITHUB_SHA is required to version site assets.");
+          const source = fs.readFileSync("frontend/index.html", "utf8");
+          const page = source.replace(/((?:src|href)="static\/[^"]+)"/g, `$1?v=${version}"`);
+          if (page === source) throw new Error("No static asset references were versioned.");
+          fs.writeFileSync("_site/index.html", page);
+          NODE
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:

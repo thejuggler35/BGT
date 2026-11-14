@@ -448,7 +448,9 @@ function collectFacts() {
 
 async function saveBrand(event) {
   event.preventDefault();
-  const button = event.currentTarget.querySelector('[type="submit"]');
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || form.id !== "brand-form") return;
+  const button = form.querySelector('[type="submit"]');
   const status = document.querySelector("#brand-save-status");
   button.disabled = true;
   button.innerHTML = '<span class="loader"></span> Saving…';
@@ -681,9 +683,14 @@ async function updateTeamMember(id, changes) {
 
 async function addTeamMember(event) {
   event.preventDefault();
-  const form = event.currentTarget;
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || form.id !== "team-form") return;
   const button = form.querySelector('[type="submit"]');
   const errorNode = document.querySelector("#team-error");
+  if (!button || !errorNode) {
+    toast("The account form is unavailable. Reopen Team members and try again.", true);
+    return;
+  }
   errorNode.textContent = "";
   button.disabled = true;
   try {
@@ -983,6 +990,7 @@ document.addEventListener("click", async (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  if (!(event.target instanceof HTMLFormElement)) return;
   if (event.target.id === "brand-form") saveBrand(event);
   if (event.target.id === "team-form") addTeamMember(event);
 });
@@ -1118,7 +1126,7 @@ async function init() {
 }
 
 document.addEventListener("submit", async (event) => {
-  if (event.target.id !== "login-form") return;
+  if (!(event.target instanceof HTMLFormElement) || event.target.id !== "login-form") return;
   event.preventDefault();
   const form = event.target;
   const button = form.querySelector('[type="submit"]');

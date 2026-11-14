@@ -50,7 +50,7 @@ The first visit to a new database prompts you to create an administrator account
 
 Administrators can use **Create sign-in** on **Team members** to add accounts and assign a role, and can deactivate accounts from the same page. Accounts have individual email/password sign-in and seven-day browser-tab sessions. Passwords are stored as salted PBKDF2 hashes. Share initial passwords with teammates securely. Roles are enforced by the API:
 
-If account sign-in is enabled, **Use workspace access token** on the sign-in screen allows a trusted administrator to enter the private `BGT_API_TOKEN` directly. This grants administrator access and can be used to create accounts and assign roles under **Team members**. Use it only on a trusted device; the token is kept in that browser tab's session storage and cleared when the tab closes. Prefer individual accounts for everyday use.
+If account sign-in is enabled, **Use workspace access token** on the sign-in screen allows a trusted administrator to enter the private `BGT_API_TOKEN` directly. **Create sign-in using token** opens an account-creation form that requires this token and lets the administrator select a role. The token grants administrator access; use it only on a trusted device. It is cleared after account creation or a failed request. Prefer individual accounts for everyday use.
 
 | Role | Permissions |
 | --- | --- |

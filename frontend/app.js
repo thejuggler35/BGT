@@ -16,6 +16,7 @@ const state = {
   setupRequired: false,
   bootstrapRequiresToken: false,
   tokenAccessMode: false,
+  tokenCreateMode: false,
   createAccountOpen: false,
   user: null,
   team: [],
@@ -208,9 +209,12 @@ function renderLogin(errorMessage = "", setup = state.setupRequired, tokenMode =
   syncAuthChrome();
   const accountMode = state.accountsEnabled || setup;
   const useToken = !setup && (!state.accountsEnabled || tokenMode);
+  const createWithToken = !setup && state.accountsEnabled && state.tokenCreateMode;
   const title = setup ? "Set up your workspace" : "Welcome back";
   const description = setup
     ? "Create the first administrator account. This account can invite teammates and assign their workspace roles."
+    : createWithToken
+      ? "Enter the private workspace administrator token to create an account and choose its role."
     : useToken
       ? "Use the private workspace administrator token for direct access or to create team accounts."
       : accountMode ? "Sign in with your individual BGT account to open your team workspace." : "Enter your workspace access token to open your brand guidelines and review history.";
@@ -222,15 +226,22 @@ function renderLogin(errorMessage = "", setup = state.setupRequired, tokenMode =
       <p class="page-description">${description}</p>
       <form class="login-form" id="login-form">
         ${setup ? `<label class="field"><span class="field-label">Your name</span><input class="text-input" name="name" maxlength="100" autocomplete="name" required autofocus></label>` : ""}
-        ${accountMode && !useToken ? `<label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="username" required ${setup ? "" : "autofocus"}></label>
+        ${createWithToken ? `<label class="field"><span class="field-label">Workspace access token</span><input class="text-input" name="token" type="password" autocomplete="off" required autofocus placeholder="Paste your private administrator token"></label>
+        <label class="field"><span class="field-label">Name</span><input class="text-input" name="name" maxlength="100" autocomplete="name" required></label>
+        <label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="email" required></label>
+        <label class="field"><span class="field-label">Initial password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required placeholder="At least 12 characters"></label>
+        <label class="field"><span class="field-label">Role</span><select class="select-input" name="role" required><option value="creator">Content creator</option><option value="reviewer">Reviewer</option><option value="admin">Administrator</option></select></label>` :
+        accountMode && !useToken ? `<label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="username" required ${setup ? "" : "autofocus"}></label>
         <label class="field"><span class="field-label">Password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="${setup ? "new-password" : "current-password"}" required placeholder="${setup ? "At least 12 characters" : ""}"></label>
         ${setup && state.bootstrapRequiresToken ? `<label class="field"><span class="field-label">Workspace setup token</span><input class="text-input" name="workspace_token" type="password" autocomplete="off" required></label>` : ""}` :
     `<label class="field"><span class="field-label">Workspace access token</span><input class="text-input" name="token" type="password" autocomplete="off" required autofocus placeholder="Paste your private administrator token"></label>`}
         <p class="validation-message" id="login-error" role="alert">${escapeHtml(errorMessage)}</p>
-        <button class="button button-primary" type="submit">${setup ? "Create administrator" : useToken ? "Continue with token" : "Sign in"} <span class="button-icon">→</span></button>
+        <button class="button button-primary" type="submit">${setup ? "Create administrator" : createWithToken ? "Create sign-in" : useToken ? "Continue with token" : "Sign in"} <span class="button-icon">→</span></button>
       </form>
-      ${!setup && state.accountsEnabled ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="${useToken ? "account" : "token"}">${useToken ? "Use account sign-in instead" : "Use workspace access token"}</button>` : ""}
-      <div class="human-note">${icon("shield")}<span>${useToken ? "This token has administrator access. Use it only on a trusted device; it stays in this browser tab and is cleared when you close the tab." : "Your sign-in session is kept in this browser tab only."}</span></div>
+      ${!setup && state.accountsEnabled ? createWithToken
+        ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="account">Cancel and return to sign in</button>`
+        : `<button class="button button-secondary login-mode-button" type="button" data-login-mode="${useToken ? "account" : "token"}">${useToken ? "Use account sign-in instead" : "Use workspace access token"}</button>${!useToken ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="create">Create sign-in using token</button>` : ""}` : ""}
+      <div class="human-note">${icon("shield")}<span>${createWithToken ? "The workspace token grants administrator access. Use it only on a trusted device. It is cleared after the account is created or if the request fails." : useToken ? "This token has administrator access. Use it only on a trusted device; it stays in this browser tab and is cleared when you close the tab." : "Your sign-in session is kept in this browser tab only."}</span></div>
     </div>
   </section>`;
 }
@@ -852,6 +863,7 @@ document.addEventListener("click", async (event) => {
   const target = event.target.closest("[data-action], [data-open-review], [data-select-finding], [data-mode], [data-filter-findings], [data-login-mode]");
   if (!target) return;
   if (target.dataset.loginMode) {
+    state.tokenCreateMode = target.dataset.loginMode === "create";
     state.tokenAccessMode = target.dataset.loginMode === "token";
     renderLogin("", false);
     return;
@@ -1029,6 +1041,7 @@ document.querySelector("#sign-out").addEventListener("click", async () => {
   state.reviews = [];
   state.user = null;
   state.tokenAccessMode = false;
+  state.tokenCreateMode = false;
   renderLogin("", false);
 });
 window.addEventListener("hashchange", renderRoute);
@@ -1096,13 +1109,31 @@ document.addEventListener("submit", async (event) => {
   const button = form.querySelector('[type="submit"]');
   const values = Object.fromEntries(new FormData(form));
   button.disabled = true;
-  button.textContent = state.setupRequired ? "Creating account…" : "Signing in…";
+  button.textContent = state.setupRequired || state.tokenCreateMode ? "Creating account…" : "Signing in…";
   try {
     let result;
     if (state.setupRequired) {
       result = await api("/api/auth/setup", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values),
       });
+    } else if (state.tokenCreateMode) {
+      sessionStorage.setItem("bgt-access-token", String(values.token).trim());
+      await api("/api/team", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: values.name,
+          email: values.email,
+          password: values.password,
+          role: values.role,
+        }),
+      });
+      sessionStorage.removeItem("bgt-access-token");
+      state.tokenCreateMode = false;
+      state.tokenAccessMode = false;
+      renderLogin();
+      toast("Sign-in created. The new user can now sign in with their email and password.");
+      return;
     } else if (state.accountsEnabled && !state.tokenAccessMode) {
       result = await api("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },

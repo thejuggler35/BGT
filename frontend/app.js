@@ -57,7 +57,7 @@ function syncProfileChrome() {
   if (roleNode) roleNode.textContent = role;
   if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "B";
   const teamLink = document.querySelector('[data-route="team"]');
-  if (teamLink) teamLink.hidden = state.user?.role !== "admin";
+  if (teamLink) teamLink.hidden = !state.accountsEnabled || state.user?.role !== "admin";
 }
 
 function syncBrandChrome() {
@@ -174,7 +174,7 @@ function renderRoute() {
   };
   setBreadcrumb(labels[route.page]);
   if (!state.rules) return;
-  if (route.page === "team" && state.user?.role !== "admin") {
+  if (route.page === "team" && (!state.accountsEnabled || state.user?.role !== "admin")) {
     renderAccessDenied();
     return;
   }
@@ -701,7 +701,7 @@ function reviewDecision(review) {
 async function loadReview(id) {
   app.innerHTML = `<div class="loading-view"><span class="loader"></span><span>Opening review…</span></div>`;
   try {
-    const canAssign = ["admin", "creator"].includes(state.user?.role);
+    const canAssign = state.accountsEnabled && ["admin", "creator"].includes(state.user?.role);
     const [review, reviewers] = await Promise.all([
       api(`/api/reviews/${id}`),
       canAssign ? api("/api/team/reviewers") : Promise.resolve([]),
@@ -718,7 +718,7 @@ async function loadReview(id) {
 }
 
 function renderReview(review) {
-  const canAssign = ["admin", "creator"].includes(state.user?.role);
+  const canAssign = state.accountsEnabled && ["admin", "creator"].includes(state.user?.role);
   const openCount = review.findings.filter((finding) => finding.state === "open").length;
   const selected = selectedFinding(review);
   const visibleFindings = review.findings.filter((finding) => {
@@ -967,10 +967,12 @@ document.querySelector("#mobile-menu").addEventListener("click", () => {
 document.querySelector("#mobile-backdrop").addEventListener("click", closeMobileNav);
 document.querySelector("#header-help").addEventListener("click", () => navigate("guide"));
 document.querySelector("#sign-out").addEventListener("click", async () => {
-  try {
-    await api("/api/auth/session", { method: "DELETE" });
-  } catch (error) {
-    toast(error.message || "The session could not be revoked.", true);
+  if (state.accountsEnabled) {
+    try {
+      await api("/api/auth/session", { method: "DELETE" });
+    } catch (error) {
+      toast(error.message || "The session could not be revoked.", true);
+    }
   }
   sessionStorage.removeItem("bgt-access-token");
   state.rules = null;
@@ -1013,8 +1015,11 @@ async function init() {
       renderLogin("", false);
       return;
     }
+    const userRequest = Object.prototype.hasOwnProperty.call(config, "accounts_enabled")
+      ? api("/api/auth/me")
+      : Promise.resolve({ id: null, name: "Workspace administrator", role: "admin" });
     const [health, rules, reviews, user] = await Promise.all([
-      api("/api/health"), api("/api/brand-rules"), api("/api/reviews"), api("/api/auth/me"),
+      api("/api/health"), api("/api/brand-rules"), api("/api/reviews"), userRequest,
     ]);
     if (health.status !== "ok") throw new Error("The BGT API did not report a healthy status.");
     state.rules = rules;

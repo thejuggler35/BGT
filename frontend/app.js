@@ -18,6 +18,7 @@ const state = {
   tokenAccessMode: false,
   tokenCreateMode: false,
   createAccountOpen: false,
+  aiEnabled: false,
   user: null,
   team: [],
   reviewers: [],
@@ -524,6 +525,9 @@ function renderNewReview() {
         <div class="field review-title-field"><label for="review-title">Review title <span class="field-hint">(optional)</span></label><input id="review-title" class="text-input" maxlength="160" placeholder="e.g. Summer launch announcement"></div>
         <div class="tabs" role="tablist" aria-label="Draft input method"><button class="tab-button ${state.reviewMode === "text" ? "active" : ""}" type="button" role="tab" aria-selected="${state.reviewMode === "text"}" data-mode="text">Paste text</button><button class="tab-button ${state.reviewMode === "file" ? "active" : ""}" type="button" role="tab" aria-selected="${state.reviewMode === "file"}" data-mode="file">Upload document</button></div>
         <div id="review-input-area">${state.reviewMode === "text" ? renderTextEditor() : renderUploadEditor()}</div>
+        ${state.aiEnabled
+          ? `<label class="ai-consent"><input id="ai-analysis-consent" type="checkbox"><span><strong>Include AI contextual analysis</strong><small>When selected, draft text and saved brand guidance are sent to the configured AI provider. Uploaded images themselves are not sent. AI findings are suggestions for human review.</small></span></label>`
+          : `<p class="field-hint ai-unavailable">AI contextual analysis is not enabled for this workspace. Rule-based checks remain available.</p>`}
       </section>
       <aside class="side-stack">
         <section class="panel"><div class="panel-heading"><div><h2>What BGT checks</h2><p>Every check includes its evidence</p></div></div><div class="review-guidance">
@@ -532,6 +536,7 @@ function renderNewReview() {
           <div class="guidance-item"><span class="guidance-icon">${icon("edit")}</span><div><strong>Preferred wording</strong><p>Optional suggestions when preferred language is missing.</p></div></div>
           <div class="guidance-item"><span class="guidance-icon">${icon("help")}</span><div><strong>Tone prompt</strong><p>A simple, transparent capitalization heuristic.</p></div></div>
           <div class="guidance-item"><span class="guidance-icon">${icon("image")}</span><div><strong>Visual guidance</strong><p>Compare prominent colors and the optional reference logo with saved brand guidance.</p></div></div>
+          ${state.aiEnabled ? `<div class="guidance-item"><span class="guidance-icon">${icon("edit")}</span><div><strong>Optional AI context</strong><p>When you opt in, AI considers meaning, tone, and clarity alongside your saved guidelines.</p></div></div>` : ""}
         </div></section>
         <div class="callout"><strong>Human review is the final step</strong>Findings are prompts, not confirmed violations. BGT will never publish, rewrite, or approve your content for you.</div>
       </aside>
@@ -591,6 +596,9 @@ async function submitReview() {
     formData.append("file", state.uploadFile);
   }
   formData.append("title", document.querySelector("#review-title")?.value.trim() || "");
+  if (document.querySelector("#ai-analysis-consent")?.checked) {
+    formData.append("analyze_with_ai", "true");
+  }
   submitButton.disabled = true;
   submitButton.innerHTML = '<span class="loader"></span> Checking…';
   try {
@@ -1067,6 +1075,13 @@ async function init() {
   }
   try {
     const config = await api("/api/auth/config");
+    let aiConfig = { enabled: false };
+    try {
+      aiConfig = await api("/api/ai/config");
+    } catch (error) {
+      if (error.status !== 404) throw error;
+    }
+    state.aiEnabled = aiConfig.enabled === true;
     state.authRequired = config.required;
     state.accountsEnabled = config.accounts_enabled;
     state.setupRequired = config.setup_required;

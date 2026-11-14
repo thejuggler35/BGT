@@ -41,6 +41,10 @@ For a new Railway deployment, use the repository's root `Dockerfile`, attach a p
 | `BGT_CORS_ORIGINS` | `https://thejuggler35.github.io` |
 | `RAILWAY_RUN_UID` | `0` |
 | `BGT_API_TOKEN` | A private random value with at least 32 characters |
+| `BGT_AI_API_KEY` | Optional secret API key for an OpenAI-compatible provider |
+| `BGT_AI_MODEL` | Optional model name supported by that provider |
+| `BGT_AI_BASE_URL` | Optional provider API base URL; defaults to `https://api.openai.com/v1` |
+| `BGT_AI_TIMEOUT_SECONDS` | Optional request timeout from 5 to 60 seconds; defaults to `25` |
 
 Generate a token locally, for example with `python -c "import secrets; print(secrets.token_hex(32))"`. Add the result directly to Railway as `BGT_API_TOKEN`. Do not put it in GitHub, the frontend, or this file. Keep the token private and rotate it in Railway if it is exposed.
 
@@ -60,6 +64,12 @@ If account sign-in is enabled, **Use workspace access token** on the sign-in scr
 
 Review records show who created them and who recorded each decision, with decision history retained. The configured `BGT_API_TOKEN` remains a high-privilege administrator recovery credential; keep it private. Use HTTPS and keep the Railway service to one instance while it uses SQLite. Hosting costs depend on the provider's plan and usage.
 
+## Optional AI analysis
+
+The existing rule-based checks work without an AI provider. To enable contextual analysis, configure `BGT_AI_API_KEY` and `BGT_AI_MODEL` on the backend; the optional `BGT_AI_BASE_URL` accepts an OpenAI-compatible chat-completions endpoint. Keep provider credentials on Railway only, never in the frontend or GitHub Pages configuration. AI analysis is off by default for each review: the submitter must select **Include AI contextual analysis**. Only then are the draft's text and the saved textual brand guidance sent to the configured provider. Uploaded images themselves are not sent; image-only uploads remain on the existing visual-analysis path. Review the provider's privacy, retention, and pricing terms before enabling it.
+
+AI analysis is limited to 30,000 characters per draft, has a bounded request timeout and response size, and returns advisory findings only. Provider failures or invalid results are reported and the review is not saved; rerun the existing rule-based check with AI unchecked if needed. AI cannot approve or publish content.
+
 ## Review a draft
 
 1. Open **Brand guidelines** to review or update the saved rules and product facts.
@@ -71,12 +81,13 @@ Review records show who created them and who recorded each decision, with decisi
 
 - `GET /api/health`
 - `GET /api/auth/config`
+- `GET /api/ai/config` to check whether optional AI analysis is configured
 - `POST /api/auth/setup` to create the first administrator account
 - `POST /api/auth/login` and `GET /api/auth/me`
 - `GET /api/team`, `POST /api/team`, and `PATCH /api/team/{id}` (administrators)
 - `POST /api/auth/session`
 - `GET` and `PUT /api/brand-rules`
-- `POST /api/reviews` for pasted text or PDF/DOCX/PNG/JPEG/WebP uploads
+- `POST /api/reviews` for pasted text or PDF/DOCX/PNG/JPEG/WebP uploads; `analyze_with_ai=true` opts into sending available draft text and textual brand guidance to the configured AI provider
 - `GET /api/reviews` and `GET /api/reviews/{id}`
 - `PATCH /api/reviews/{id}` to update findings or save a review decision
 

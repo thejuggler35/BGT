@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.ai_analysis import AIAnalysisError, ai_analysis_enabled, analyze_content, get_ai_settings
 from backend.compliance import check_content
 from backend.database import (
     connection,
@@ -37,6 +39,7 @@ SESSION_DAYS = 7
 PUBLIC_AUTH_PATHS = {
     "/api/health",
     "/api/auth/config",
+    "/api/ai/config",
     "/api/auth/login",
     "/api/auth/setup",
     "/api/auth/session",
@@ -48,6 +51,7 @@ async def lifespan(_app):
     access_token = os.environ.get("BGT_API_TOKEN", "")
     if access_token and len(access_token) < 32:
         raise RuntimeError("BGT_API_TOKEN must contain at least 32 characters.")
+    get_ai_settings()
     initialize_database()
     yield
 
@@ -257,6 +261,11 @@ def auth_config():
     }
 
 
+@app.get("/api/ai/config")
+def ai_config():
+    return {"enabled": ai_analysis_enabled()}
+
+
 @app.post("/api/auth/setup")
 def setup_first_account(setup: AccountSetup):
     expected_token = os.environ.get("BGT_API_TOKEN", "")
@@ -417,6 +426,7 @@ def update_brand_rules(rules: BrandRules, actor=Depends(current_actor)):
 async def create_review(
     text: str = Form(default=""),
     title: str = Form(default=""),
+    analyze_with_ai: bool = Form(default=False),
     file: UploadFile | None = File(default=None),
     actor=Depends(current_actor),
 ):
@@ -452,6 +462,28 @@ async def create_review(
 
     with connection() as conn:
         rules = get_brand_rules(conn)
+    findings = check_content(content, rules) if content else []
+    if analyze_with_ai:
+        if not ai_analysis_enabled():
+            raise HTTPException(status_code=409, detail="AI analysis is not configured for this workspace.")
+        if content:
+            try:
+                findings.extend(await asyncio.to_thread(analyze_content, content, rules))
+            except AIAnalysisError as exc:
+                raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+        else:
+            findings.append({
+                "category": "ai_context",
+                "title": "AI analysis was not run",
+                "severity": "info",
+                "matched_text": "",
+                "explanation": "No extractable draft text was available. AI analysis reviews text only; the uploaded image was checked using visual guidelines.",
+                "evidence": "No text was sent to the AI provider.",
+                "guideline": "",
+                "suggestion": "",
+            })
+
+    with connection() as conn:
         cursor = conn.execute(
             """
             INSERT INTO reviews (title, source_name, source_type, content, created_by, visual_type)
@@ -469,7 +501,6 @@ async def create_review(
             ),
         )
         review_id = cursor.lastrowid
-        findings = check_content(content, rules) if content else []
         if visual_images:
             visual = get_logo_reference(conn)
             logo_reference = visual["logo_reference"]

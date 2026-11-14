@@ -4,13 +4,13 @@ BGT (Brand Governance Technology) helps a team check draft marketing content aga
 
 ## What BGT does
 
-- Stores a brand profile, voice and tone guidance, restricted phrases, preferred wording, and numeric product facts.
-- Checks pasted drafts or text-based PDF and DOCX files against those saved rules.
+- Stores a brand profile, voice and tone guidance, restricted phrases, preferred wording, numeric product facts, approved colors, and an optional logo reference.
+- Checks pasted drafts, PDF/DOCX documents, and PNG/JPEG/WebP images against saved text and visual guidelines.
 - Shows the matched text, relevant guideline, evidence, and a suggested edit for each finding.
 - Saves reviews and reviewer decisions so they can be searched and reopened later.
 - Lets reviewers edit suggestions, resolve or dismiss findings, and approve a review or request changes.
 
-The checks are rule-based. Restricted phrases are matched without regard to case. Product quantities are compared when the sentence contains the product name and a relevant fact term. Missing preferred wording produces a suggestion. The tone prompt is a simple all-caps heuristic. Findings are prompts for human review, not confirmed violations.
+The checks are rule-based. Restricted phrases are matched without regard to case. Product quantities are compared when the sentence contains the product name and a relevant fact term. Missing preferred wording produces a suggestion. Visual checks compare prominent sampled colors with the saved palette and look for a shape similar to the saved logo reference. These checks are approximate: natural imagery may include off-palette colors, and logo checks do not establish correct placement, clear space, or distortion. Findings are prompts for human review, not confirmed violations.
 
 ## Run locally
 
@@ -61,7 +61,7 @@ Review records show who created them and who recorded each decision, with decisi
 ## Review a draft
 
 1. Open **Brand guidelines** to review or update the saved rules and product facts.
-2. Choose **New review**, paste draft text or upload a PDF/DOCX file, then run the check.
+2. Choose **New review**, paste draft text or upload a PDF/DOCX/image file, then run the check.
 3. Review each finding and its evidence. Edit a suggestion, or resolve or dismiss the finding as appropriate.
 4. Record **Approve review** or **Request changes**. Reopen saved reviews from **Review history**.
 
@@ -74,7 +74,7 @@ Review records show who created them and who recorded each decision, with decisi
 - `GET /api/team`, `POST /api/team`, and `PATCH /api/team/{id}` (administrators)
 - `POST /api/auth/session`
 - `GET` and `PUT /api/brand-rules`
-- `POST /api/reviews` for pasted text or PDF/DOCX uploads
+- `POST /api/reviews` for pasted text or PDF/DOCX/PNG/JPEG/WebP uploads
 - `GET /api/reviews` and `GET /api/reviews/{id}`
 - `PATCH /api/reviews/{id}` to update findings or save a review decision
 
@@ -82,8 +82,9 @@ Protected API requests use the `Authorization: Bearer <token>` header when `BGT_
 
 ## Limits
 
-- PDF and DOCX uploads are limited to 10 MB. Scanned/image-only PDFs and formats other than PDF or DOCX are not supported.
+- PDF, DOCX, and image uploads are limited to 10 MB. Visual checks process at most 20 PDF pages or DOCX embedded images, limit raster images to 25 megapixels, and downsample inputs for analysis.
+- Logo reference images are limited to 2 MB. Uploaded content is analyzed in memory; binary uploads are not retained with review records.
 - Extracted draft text is stored in the database with the review. Uploaded file bytes are processed in memory and are not retained.
 - Drafts are limited to 200,000 characters.
 - Numeric checks require matching product and fact context; they do not establish legal or scientific accuracy.
-- BGT does not provide image or logo review, email-based password recovery, or automated content approval.
+- Visual checks are heuristic and can miss altered or small logos and can flag legitimate photo colors. They do not replace manual review. BGT does not provide email-based password recovery or automated content approval.

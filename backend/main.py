@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import os
@@ -13,7 +14,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.compliance import check_content
-from backend.database import connection, get_brand_rules, initialize_database, save_brand_rules
+from backend.database import (
+    connection,
+    get_brand_rules,
+    get_logo_reference,
+    initialize_database,
+    save_brand_rules,
+)
 from backend.document_parser import MAX_UPLOAD_BYTES, extract_text
 from backend.schemas import (
     AccountCredentials,
@@ -23,6 +30,7 @@ from backend.schemas import (
     TeamMemberCreate,
     TeamMemberUpdate,
 )
+from backend.visual import analyze_visual_image, decode_image, extract_visual_images
 
 PASSWORD_ITERATIONS = 310_000
 SESSION_DAYS = 7
@@ -183,6 +191,8 @@ def _serialize_finding(row):
 
 def _serialize_review(conn, row):
     review = dict(row)
+    if review.get("visual_type"):
+        review["source_type"] = review["visual_type"]
     if review.get("created_by") is not None:
         creator = conn.execute("SELECT name FROM users WHERE id = ?", (review["created_by"],)).fetchone()
         review["created_by_name"] = creator["name"] if creator else "Former team member"
@@ -384,6 +394,20 @@ def read_brand_rules():
 @app.put("/api/brand-rules")
 def update_brand_rules(rules: BrandRules, actor=Depends(current_actor)):
     require_role(actor, "admin", "creator")
+    if rules.logo_reference_data:
+        header, encoded = rules.logo_reference_data.split(",", 1)
+        expected_format = {"image/png": "PNG", "image/jpeg": "JPEG", "image/webp": "WEBP"}[
+            header[5:].split(";", 1)[0]
+        ]
+        try:
+            reference = decode_image(
+                base64.b64decode(encoded, validate=True),
+                expected_format=expected_format,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Invalid logo reference: {exc}") from exc
+        if min(reference.size) < 8:
+            raise HTTPException(status_code=422, detail="Logo reference must be at least 8 pixels wide and tall.")
     with connection() as conn:
         save_brand_rules(conn, rules)
         return get_brand_rules(conn)
@@ -398,22 +422,31 @@ async def create_review(
 ):
     require_role(actor, "admin", "creator")
     source_type = "text"
+    visual_type = ""
     source_name = "Pasted text"
     content = text.strip()
+    visual_images = []
+    visual_truncated = False
     if file is not None and file.filename:
         safe_name = Path(file.filename.replace("\\", "/")).name
         raw = await file.read(MAX_UPLOAD_BYTES + 1)
         if len(raw) > MAX_UPLOAD_BYTES:
             raise HTTPException(status_code=413, detail="File is larger than the 10 MB upload limit.")
+        suffix = Path(safe_name).suffix.lower()
         try:
-            content, source_type = extract_text(safe_name, raw)
+            if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+                visual_images, visual_truncated = extract_visual_images(safe_name, raw)
+                visual_type = "image"
+            else:
+                content, source_type = extract_text(safe_name, raw, allow_empty=True)
+                visual_images, visual_truncated = extract_visual_images(safe_name, raw)
         except ValueError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         source_name = safe_name[:255]
     if len(title) > 160:
         raise HTTPException(status_code=422, detail="Review title must be 160 characters or fewer.")
-    if not content:
-        raise HTTPException(status_code=422, detail="Add some draft text or upload a PDF or DOCX to review.")
+    if not content and not visual_images:
+        raise HTTPException(status_code=422, detail="Add draft text or upload a readable PDF, DOCX, PNG, JPEG, or WebP file.")
     if len(content) > 200_000:
         raise HTTPException(status_code=413, detail="The extracted draft is too long. Limit content to 200,000 characters.")
 
@@ -421,19 +454,41 @@ async def create_review(
         rules = get_brand_rules(conn)
         cursor = conn.execute(
             """
-            INSERT INTO reviews (title, source_name, source_type, content, created_by)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO reviews (title, source_name, source_type, content, created_by, visual_type)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
-                title.strip()[:160] or (Path(source_name).stem if source_type != "text" else "Untitled review"),
+                title.strip()[:160] or (
+                    Path(source_name).stem if source_type != "text" or visual_type else "Untitled review"
+                ),
                 source_name,
                 source_type,
                 content,
                 actor["id"],
+                visual_type,
             ),
         )
         review_id = cursor.lastrowid
-        findings = check_content(content, rules)
+        findings = check_content(content, rules) if content else []
+        if visual_images:
+            visual = get_logo_reference(conn)
+            logo_reference = visual["logo_reference"]
+            palette = rules["visual_palette"]
+            for image, location in visual_images:
+                for finding in analyze_visual_image(image, palette, logo_reference):
+                    finding["evidence"] = f"{location}: {finding['evidence']}".rstrip()
+                    findings.append(finding)
+            if visual_truncated:
+                findings.append({
+                    "category": "visual_guidance",
+                    "title": "Visual review was limited",
+                    "severity": "info",
+                    "matched_text": "",
+                    "explanation": "The file contained more pages or images than the visual review limit, so only the first 20 were checked.",
+                    "evidence": "Visual processing limit: 20 pages or embedded images.",
+                    "guideline": "",
+                    "suggestion": "",
+                })
         conn.executemany(
             """
             INSERT INTO findings

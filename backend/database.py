@@ -1,4 +1,6 @@
 import os
+import base64
+import json
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -85,6 +87,14 @@ def initialize_database():
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 decided_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS visual_guidelines (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                palette TEXT NOT NULL DEFAULT '[]',
+                logo_reference BLOB,
+                logo_content_type TEXT,
+                logo_name TEXT,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -134,9 +144,11 @@ def initialize_database():
             ("created_by", "INTEGER REFERENCES users(id)"),
             ("decided_by", "INTEGER REFERENCES users(id)"),
             ("assigned_to", "INTEGER REFERENCES users(id)"),
+            ("visual_type", "TEXT NOT NULL DEFAULT ''"),
         ):
             if column not in review_columns:
                 conn.execute(f"ALTER TABLE reviews ADD COLUMN {column} {definition}")
+        conn.execute("INSERT OR IGNORE INTO visual_guidelines (id) VALUES (1)")
         if conn.execute("SELECT 1 FROM brand_settings WHERE id = 1").fetchone() is None:
             conn.execute(
                 "INSERT INTO brand_settings (id, brand_name, brand_voice, tone_characteristics) VALUES (1, ?, ?, ?)",
@@ -174,6 +186,7 @@ def get_brand_rules(conn):
     facts = conn.execute(
         "SELECT id, product, fact, value, unit FROM product_facts ORDER BY id"
     ).fetchall()
+    visual = conn.execute("SELECT palette, logo_name FROM visual_guidelines WHERE id = 1").fetchone()
     grouped = {"restricted": [], "preferred": []}
     for row in terms:
         grouped[row["category"]].append(
@@ -186,6 +199,8 @@ def get_brand_rules(conn):
         "restricted_terms": grouped["restricted"],
         "preferred_terms": grouped["preferred"],
         "product_facts": [dict(row) for row in facts],
+        "visual_palette": json.loads(visual["palette"]),
+        "logo_reference_name": visual["logo_name"],
         "updated_at": settings["updated_at"],
     }
 
@@ -211,6 +226,32 @@ def save_brand_rules(conn, rules):
             for item in rules.preferred_terms
         ],
     )
+    visual = conn.execute("SELECT * FROM visual_guidelines WHERE id = 1").fetchone()
+    logo_data = visual["logo_reference"]
+    logo_content_type = visual["logo_content_type"]
+    logo_name = visual["logo_name"]
+    if rules.clear_logo_reference:
+        logo_data = logo_content_type = logo_name = None
+    elif rules.logo_reference_data:
+        header, encoded = rules.logo_reference_data.split(",", 1)
+        logo_data = base64.b64decode(encoded, validate=True)
+        logo_content_type = header[5:].split(";", 1)[0]
+        logo_name = rules.logo_reference_name.strip() or "Brand logo"
+    conn.execute(
+        """
+        UPDATE visual_guidelines
+        SET palette = ?, logo_reference = ?, logo_content_type = ?, logo_name = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+        """,
+        (json.dumps(rules.visual_palette), logo_data, logo_content_type, logo_name),
+    )
+
+
+def get_logo_reference(conn):
+    return conn.execute(
+        "SELECT logo_reference, logo_content_type, logo_name FROM visual_guidelines WHERE id = 1"
+    ).fetchone()
     conn.execute("DELETE FROM product_facts")
     conn.executemany(
         "INSERT INTO product_facts (product, fact, value, unit) VALUES (?, ?, ?, ?)",

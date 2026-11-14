@@ -185,6 +185,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .field > label, .field-label { color: #616161; font-size: 11px; font-weight: 600; }
 .field-hint { color: #9b9b9b; font-size: 10px; line-height: 1.5; }
 .text-input, .text-area, .select-input { width: 100%; min-height: 39px; padding: 9px 11px; border: 1px solid #e3e3e3; border-radius: 5px; background: #ffffff; color: #424242; font-size: 12px; transition: border-color .2s ease, box-shadow .2s ease; }
+.text-input[type="file"] { padding: 7px; }
+.visual-checkbox { display: flex; align-items: center; gap: 8px; color: #777777; font-size: 11px; }
 .text-input::placeholder, .text-area::placeholder { color: #b4b4b4; }
 .text-input:focus, .text-area:focus, .select-input:focus { border-color: #aaaaaa; box-shadow: 0 0 0 3px rgb(128 128 128 / 9%); outline: none; }
 .text-area { min-height: 88px; resize: vertical; line-height: 1.55; }

@@ -1,4 +1,6 @@
 import re
+import base64
+import binascii
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -37,6 +39,10 @@ class BrandRules(BaseModel):
     restricted_terms: list[Term] = Field(default_factory=list, max_length=100)
     preferred_terms: list[Term] = Field(default_factory=list, max_length=100)
     product_facts: list[ProductFact] = Field(default_factory=list, max_length=100)
+    visual_palette: list[str] = Field(default_factory=list, max_length=12)
+    logo_reference_data: str | None = Field(default=None, max_length=2_800_000)
+    logo_reference_name: str = Field(default="Brand logo", max_length=120)
+    clear_logo_reference: bool = False
 
     @field_validator("brand_name")
     @classmethod
@@ -59,6 +65,38 @@ class BrandRules(BaseModel):
             phrases = [term.phrase.strip().casefold() for term in terms]
             if len(phrases) != len(set(phrases)):
                 raise ValueError("Each term list must contain unique phrases.")
+        return self
+
+    @field_validator("visual_palette")
+    @classmethod
+    def valid_palette(cls, values):
+        palette = [value.strip().upper() for value in values if value.strip()]
+        if any(not re.fullmatch(r"#[0-9A-F]{6}", value) for value in palette):
+            raise ValueError("Brand colors must use six-digit hex values such as #1A2B3C.")
+        if len(palette) != len(set(palette)):
+            raise ValueError("Brand colors must be unique.")
+        return palette
+
+    @field_validator("logo_reference_data")
+    @classmethod
+    def valid_logo_data_url(cls, value):
+        if value is None:
+            return value
+        match = re.fullmatch(r"data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})", value)
+        if not match:
+            raise ValueError("Logo reference must be a PNG, JPEG, or WebP image.")
+        try:
+            decoded = base64.b64decode(match.group(2), validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("Logo reference image data is invalid.") from exc
+        if not decoded or len(decoded) > 2_000_000:
+            raise ValueError("Logo reference image must be smaller than 2 MB.")
+        return value
+
+    @model_validator(mode="after")
+    def logo_reference_options(self):
+        if self.clear_logo_reference and self.logo_reference_data:
+            raise ValueError("Choose either a new logo reference or remove the saved one.")
         return self
 
 

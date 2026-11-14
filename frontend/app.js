@@ -27,6 +27,7 @@ const iconPaths = {
   history: '<path d="M3 12a9 9 0 1 0 2.64-6.36L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.6 9a2.5 2.5 0 0 1 4.8.8c0 1.7-2.4 2.2-2.4 3.7M12 17h.01"/>',
   file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   rules: '<path d="M4 5h16M4 12h16M4 19h16"/><circle cx="8" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="10" cy="19" r="1"/>',
@@ -90,6 +91,15 @@ function formatDate(value, options = { month: "short", day: "numeric", year: "nu
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(reader.result));
+    reader.addEventListener("error", () => reject(new Error("The logo reference file could not be read.")));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function api(path, options = {}) {
@@ -260,7 +270,7 @@ function statusChip(status) {
 }
 
 function fileIcon(type) {
-  return `<span class="review-file-icon">${icon(type === "pdf" || type === "docx" ? "file" : "edit")}</span>`;
+  return `<span class="review-file-icon">${icon(type === "image" ? "image" : type === "pdf" || type === "docx" ? "file" : "edit")}</span>`;
 }
 
 function reviewRow(review) {
@@ -345,15 +355,22 @@ function renderBrand() {
           <div class="field full"><label for="brand-tone">Tone guidance</label><textarea id="brand-tone" class="text-area" maxlength="1000" placeholder="Describe the tone in a sentence or two.">${escapeHtml(rules.tone_characteristics)}</textarea></div>
         </div>
         <hr class="form-divider">
-        <div class="form-section-title"><span class="section-index">02</span><div><h2>Restricted terms</h2><p>Flag exact phrases for human review with a clear reason.</p></div></div>
+        <div class="form-section-title"><span class="section-index">02</span><div><h2>Visual brand guidelines</h2><p>Set approved colors and an optional logo reference for visual review. Checks are approximate human-review prompts.</p></div></div>
+        <div class="form-grid">
+          <label class="field full" for="visual-palette"><span class="field-label">Approved brand colors</span><input id="visual-palette" class="text-input" maxlength="107" value="${escapeHtml((rules.visual_palette || []).join(", "))}" placeholder="#1A2B3C, #F2A900"><span class="field-hint">Enter up to 12 six-digit hex colors, separated by commas.</span></label>
+          <label class="field full" for="logo-reference-file"><span class="field-label">Logo reference image (optional)</span><input id="logo-reference-file" class="text-input" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"><span class="field-hint">${rules.logo_reference_name ? `Saved reference: ${escapeHtml(rules.logo_reference_name)}. A new image replaces it.` : "PNG, JPEG, or WebP; up to 2 MB. Used for approximate logo-presence checks."}</span></label>
+          ${rules.logo_reference_name ? `<label class="visual-checkbox"><input type="checkbox" id="clear-logo-reference"><span>Remove saved logo reference when saving</span></label>` : ""}
+        </div>
+        <hr class="form-divider">
+        <div class="form-section-title"><span class="section-index">03</span><div><h2>Restricted terms</h2><p>Flag exact phrases for human review with a clear reason.</p></div></div>
         <div class="inline-list" id="restricted-list">${renderTermRows(rules.restricted_terms, "restricted")}</div>
         <button class="add-row" type="button" data-action="add-term" data-kind="restricted"><span>＋</span> Add restricted term</button>
         <hr class="form-divider">
-        <div class="form-section-title"><span class="section-index">03</span><div><h2>Preferred language</h2><p>Offer optional wording suggestions, never automatic violations.</p></div></div>
+        <div class="form-section-title"><span class="section-index">04</span><div><h2>Preferred language</h2><p>Offer optional wording suggestions, never automatic violations.</p></div></div>
         <div class="inline-list" id="preferred-list">${renderTermRows(rules.preferred_terms, "preferred")}</div>
         <button class="add-row" type="button" data-action="add-term" data-kind="preferred"><span>＋</span> Add preferred term</button>
         <hr class="form-divider">
-        <div class="form-section-title"><span class="section-index">04</span><div><h2>Verified product facts</h2><p>Store approved numeric claims and the context they belong to.</p></div></div>
+        <div class="form-section-title"><span class="section-index">05</span><div><h2>Verified product facts</h2><p>Store approved numeric claims and the context they belong to.</p></div></div>
         <div class="inline-list" id="facts-list">${renderFactRows(rules.product_facts)}</div>
         <button class="add-row" type="button" data-action="add-fact"><span>＋</span> Add product fact</button>
         <div class="form-actions"><span class="save-status" id="brand-save-status-bottom" role="status"></span><button class="button button-primary" type="submit">Save guidelines <span class="button-icon">→</span></button></div>
@@ -385,6 +402,7 @@ function captureBrandForm() {
     brand_name: name.value,
     brand_voice: document.querySelector("#brand-voice").value.split(",").map((part) => part.trim()).filter(Boolean),
     tone_characteristics: document.querySelector("#brand-tone").value,
+    visual_palette: document.querySelector("#visual-palette").value.split(",").map((part) => part.trim()).filter(Boolean),
     restricted_terms: collectTerms("restricted"),
     preferred_terms: collectTerms("preferred"),
     product_facts: collectFacts(),
@@ -425,8 +443,18 @@ async function saveBrand(event) {
     restricted_terms: collectTerms("restricted"),
     preferred_terms: collectTerms("preferred"),
     product_facts: collectFacts(),
+    visual_palette: document.querySelector("#visual-palette").value.split(",").map((part) => part.trim()).filter(Boolean),
+    clear_logo_reference: Boolean(document.querySelector("#clear-logo-reference")?.checked),
   };
   try {
+    const logoFile = document.querySelector("#logo-reference-file").files?.[0];
+    if (logoFile) {
+      if (logoFile.size > 2 * 1024 * 1024) throw new Error("Logo reference must be smaller than 2 MB.");
+      if (!/\.(png|jpe?g|webp)$/i.test(logoFile.name)) throw new Error("Choose a PNG, JPEG, or WebP logo reference.");
+      if (payload.clear_logo_reference) throw new Error("Choose either a new logo reference or remove the saved one.");
+      payload.logo_reference_data = await readFileAsDataUrl(logoFile);
+      payload.logo_reference_name = logoFile.name;
+    }
     state.rules = await api("/api/brand-rules", {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     });
@@ -461,9 +489,9 @@ function renderTextEditor() {
 
 function renderUploadEditor() {
   return `<div class="drop-zone" id="drop-zone"><span class="upload-icon">${icon("upload")}</span>
-    <strong>Drop a document here, or choose a file</strong><p>PDF or DOCX · Maximum file size 10 MB</p>
+    <strong>Drop an image or document here, or choose a file</strong><p>PNG, JPEG, WebP, PDF, or DOCX · Maximum file size 10 MB</p>
     <button class="button button-secondary button-small" type="button" data-action="choose-file">Choose a file</button>
-    <input class="file-input" id="document-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+    <input class="file-input" id="document-file" type="file" accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,image/png,image/jpeg,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
   </div><div id="file-detail"></div><div class="editor-submit"><span class="validation-message" id="review-error"></span><button class="button button-primary" type="button" data-action="submit-review">Upload &amp; review <span class="button-icon">→</span></button></div>`;
 }
 
@@ -475,7 +503,7 @@ function renderNewReview() {
     <div class="page-heading-row"><div><p class="eyebrow"><span class="eyebrow-dot"></span> CONTENT CHECK</p><h1 class="page-title">New review</h1><p class="page-description">Check draft language against the approved ${escapeHtml(state.rules.brand_name)} brand rules. Your original stays exactly as submitted.</p></div></div>
     <div class="form-layout">
       <section class="panel form-panel">
-        <div class="form-section-title"><span class="section-index">01</span><div><h2>Bring in your draft</h2><p>Paste text directly or upload a document for text extraction.</p></div></div>
+        <div class="form-section-title"><span class="section-index">01</span><div><h2>Bring in your content</h2><p>Paste text, upload a document, or submit an image for visual review.</p></div></div>
         <div class="field review-title-field"><label for="review-title">Review title <span class="field-hint">(optional)</span></label><input id="review-title" class="text-input" maxlength="160" placeholder="e.g. Summer launch announcement"></div>
         <div class="tabs" role="tablist" aria-label="Draft input method"><button class="tab-button ${state.reviewMode === "text" ? "active" : ""}" type="button" role="tab" aria-selected="${state.reviewMode === "text"}" data-mode="text">Paste text</button><button class="tab-button ${state.reviewMode === "file" ? "active" : ""}" type="button" role="tab" aria-selected="${state.reviewMode === "file"}" data-mode="file">Upload document</button></div>
         <div id="review-input-area">${state.reviewMode === "text" ? renderTextEditor() : renderUploadEditor()}</div>
@@ -486,6 +514,7 @@ function renderNewReview() {
           <div class="guidance-item"><span class="guidance-icon">${icon("check")}</span><div><strong>Product facts</strong><p>Numeric claims compared with matching product context.</p></div></div>
           <div class="guidance-item"><span class="guidance-icon">${icon("edit")}</span><div><strong>Preferred wording</strong><p>Optional suggestions when preferred language is missing.</p></div></div>
           <div class="guidance-item"><span class="guidance-icon">${icon("help")}</span><div><strong>Tone prompt</strong><p>A simple, transparent capitalization heuristic.</p></div></div>
+          <div class="guidance-item"><span class="guidance-icon">${icon("image")}</span><div><strong>Visual guidance</strong><p>Compare prominent colors and the optional reference logo with saved brand guidance.</p></div></div>
         </div></section>
         <div class="callout"><strong>Human review is the final step</strong>Findings are prompts, not confirmed violations. BGT will never publish, rewrite, or approve your content for you.</div>
       </aside>
@@ -508,7 +537,7 @@ function showSelectedFile(file) {
   state.uploadFile = file;
   const detail = document.querySelector("#file-detail");
   const error = document.querySelector("#review-error");
-  const validType = /\.(pdf|docx)$/i.test(file.name);
+  const validType = /\.(pdf|docx|png|jpe?g|webp)$/i.test(file.name);
   if (file.size > 10 * 1024 * 1024) {
     state.uploadFile = null;
     error.textContent = "This file is larger than the 10 MB limit.";
@@ -517,7 +546,7 @@ function showSelectedFile(file) {
   }
   if (!validType) {
     state.uploadFile = null;
-    error.textContent = "Choose a PDF or DOCX file.";
+    error.textContent = "Choose a PDF, DOCX, PNG, JPEG, or WebP file.";
     detail.innerHTML = "";
     return;
   }
@@ -736,7 +765,7 @@ function renderReview(review) {
     </div>
     <div class="report-grid">
       <div class="report-column">
-        <section class="panel draft-card"><div class="card-heading"><h2>Original draft</h2><span>Read-only · ${review.content.length.toLocaleString()} characters</span></div><div class="draft-content">${escapeHtml(review.content)}</div></section>
+        <section class="panel draft-card"><div class="card-heading"><h2>${review.content ? "Original draft" : "Visual asset"}</h2><span>Read-only${review.content ? ` · ${review.content.length.toLocaleString()} characters` : ""}</span></div><div class="draft-content">${review.content ? escapeHtml(review.content) : "This image was analyzed for visual brand consistency. Uploaded file bytes are not retained."}</div></section>
         ${reviewDecision(review)}
       </div>
       <section class="panel findings-card"><div class="card-heading"><h2>Findings &amp; suggestions</h2><span>${review.finding_count} total</span></div>
@@ -802,7 +831,8 @@ function renderGuide() {
       <article class="guide-card"><span class="section-index">03</span><h2>Follow the evidence</h2><p>Open each finding to see the matched text, saved guideline, or approved fact that prompted it. Suggestions can be edited before copying.</p></article>
       <article class="guide-card"><span class="section-index">04</span><h2>Decide as a reviewer</h2><p>Resolve or dismiss individual findings, then approve the review or request changes. No draft is auto-approved.</p></article>
       <article class="guide-card"><span class="section-index">05</span><h2>Know the limits</h2><p>Checks are deterministic phrase and numeric comparisons plus a basic capitalization heuristic. They do not understand legal context or replace expert review.</p></article>
-      <article class="guide-card"><span class="section-index">06</span><h2>Keep your data local</h2><p>This MVP stores reviews and brand rules in a local SQLite database. Uploaded documents are read for text extraction and not kept as binary files.</p></article>
+      <article class="guide-card"><span class="section-index">06</span><h2>Keep your data local</h2><p>This MVP stores reviews and brand rules in a local SQLite database. Uploaded documents are read for text extraction and visual checks; uploaded file bytes are not retained.</p></article>
+      <article class="guide-card"><span class="section-index">07</span><h2>Review visual prompts</h2><p>Save approved palette colors and an optional logo reference. Dominant-color and shape checks are approximate; natural imagery can include other colors, so a person confirms each finding.</p></article>
     </div>
     <div class="human-note">${icon("shield")}<span>Findings are prompts for review, not confirmed violations. BGT does not publish content or send drafts to an external service.</span></div>
   </section>`;

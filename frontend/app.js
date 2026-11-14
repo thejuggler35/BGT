@@ -18,6 +18,7 @@ const state = {
   tokenAccessMode: false,
   tokenCreateMode: false,
   createAccountOpen: false,
+  loginEmail: "",
   aiEnabled: false,
   user: null,
   team: [],
@@ -49,7 +50,12 @@ function icon(name, className = "") {
 
 function syncAuthChrome() {
   const signOut = document.querySelector("#sign-out");
-  if (signOut) signOut.hidden = !sessionStorage.getItem("bgt-access-token");
+  if (signOut) {
+    signOut.hidden = !sessionStorage.getItem("bgt-access-token");
+    signOut.textContent = state.accountsEnabled && state.user?.id === null
+      ? "Switch to email sign-in"
+      : "Sign out";
+  }
 }
 
 function syncProfileChrome() {
@@ -232,8 +238,8 @@ function renderLogin(errorMessage = "", setup = state.setupRequired, tokenMode =
         <label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="email" required></label>
         <label class="field"><span class="field-label">Initial password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required placeholder="At least 12 characters"></label>
         <label class="field"><span class="field-label">Role</span><select class="select-input" name="role" required><option value="creator">Content creator</option><option value="reviewer">Reviewer</option><option value="admin">Administrator</option></select></label>` :
-        accountMode && !useToken ? `<label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="username" required ${setup ? "" : "autofocus"}></label>
-        <label class="field"><span class="field-label">Password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="${setup ? "new-password" : "current-password"}" required placeholder="${setup ? "At least 12 characters" : ""}"></label>
+        accountMode && !useToken ? `<label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="username" required value="${setup ? "" : escapeHtml(state.loginEmail)}" ${setup ? "" : "autofocus"}></label>
+        <label class="field"><span class="field-label">Password</span><input class="text-input" name="password" type="password" ${setup ? 'minlength="12"' : ""} maxlength="128" autocomplete="${setup ? "new-password" : "current-password"}" required placeholder="${setup ? "At least 12 characters" : ""}"></label>
         ${setup && state.bootstrapRequiresToken ? `<label class="field"><span class="field-label">Workspace setup token</span><input class="text-input" name="workspace_token" type="password" autocomplete="off" required></label>` : ""}` :
     `<label class="field"><span class="field-label">Workspace access token</span><input class="text-input" name="token" type="password" autocomplete="off" required autofocus placeholder="Paste your private administrator token"></label>`}
         <p class="validation-message" id="login-error" role="alert">${escapeHtml(errorMessage)}</p>
@@ -241,7 +247,7 @@ function renderLogin(errorMessage = "", setup = state.setupRequired, tokenMode =
       </form>
       ${!setup && state.accountsEnabled ? createWithToken
         ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="account">Cancel and return to sign in</button>`
-        : `<button class="button button-secondary login-mode-button" type="button" data-login-mode="${useToken ? "account" : "token"}">${useToken ? "Use account sign-in instead" : "Use workspace access token"}</button>${!useToken ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="create">Create sign-in using token</button>` : ""}` : ""}
+        : `<button class="button button-secondary login-mode-button" type="button" data-login-mode="${useToken ? "account" : "token"}">${useToken ? "Sign in with email and password" : "Use workspace access token"}</button>${!useToken ? `<button class="button button-secondary login-mode-button" type="button" data-login-mode="create">Create sign-in using token</button>` : ""}` : ""}
       <div class="human-note">${icon("shield")}<span>${createWithToken ? "The workspace token grants administrator access. Use it only on a trusted device. It is cleared after the account is created or if the request fails." : useToken ? "This token has administrator access. Use it only on a trusted device; it stays in this browser tab and is cleared when you close the tab." : "Your sign-in session is kept in this browser tab only."}</span></div>
     </div>
   </section>`;
@@ -1058,6 +1064,7 @@ document.querySelector("#sign-out").addEventListener("click", async () => {
   state.user = null;
   state.tokenAccessMode = false;
   state.tokenCreateMode = false;
+  state.loginEmail = "";
   renderLogin("", false);
 });
 window.addEventListener("hashchange", renderRoute);
@@ -1158,9 +1165,10 @@ document.addEventListener("submit", async (event) => {
       toast("Sign-in created. The new user can now sign in with their email and password.");
       return;
     } else if (state.accountsEnabled && !state.tokenAccessMode) {
+      state.loginEmail = String(values.email || "").trim();
       result = await api("/api/auth/login", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: values.email, password: values.password }),
+        body: JSON.stringify({ email: state.loginEmail, password: values.password }),
       });
     } else {
       sessionStorage.setItem("bgt-access-token", String(values.token).trim());
@@ -1168,6 +1176,7 @@ document.addEventListener("submit", async (event) => {
       await init();
       return;
     }
+    state.loginEmail = "";
     sessionStorage.setItem("bgt-access-token", result.token);
     await init();
   } catch (error) {

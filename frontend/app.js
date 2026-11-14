@@ -16,6 +16,7 @@ const state = {
   setupRequired: false,
   bootstrapRequiresToken: false,
   tokenAccessMode: false,
+  createAccountOpen: false,
   user: null,
   team: [],
   reviewers: [],
@@ -625,12 +626,12 @@ function renderTeam() {
     <button class="button button-secondary button-small" type="button" data-action="toggle-member" data-id="${member.id}" data-active="${member.is_active ? "false" : "true"}" ${member.id === state.user.id ? "disabled" : ""}>${member.is_active ? "Deactivate" : "Reactivate"}</button>
   </div>`).join("");
   app.innerHTML = `<section class="page-enter">
-    <div class="page-heading-row"><div><p class="eyebrow"><span class="eyebrow-dot"></span> WORKSPACE ACCESS</p><h1 class="page-title">Team members</h1><p class="page-description">Create individual accounts and assign the least-privilege role each teammate needs.</p></div></div>
-    <div class="form-layout">
+    <div class="page-heading-row"><div><p class="eyebrow"><span class="eyebrow-dot"></span> WORKSPACE ACCESS</p><h1 class="page-title">Team members</h1><p class="page-description">Create individual accounts and assign the least-privilege role each teammate needs.</p></div><button class="button button-primary" type="button" data-action="create-signin">Create sign-in <span class="button-icon">＋</span></button></div>
+    <div class="form-layout${state.createAccountOpen ? "" : " form-layout-single"}">
       <section class="panel team-panel"><div class="panel-heading"><div><h2>People</h2><p>Role changes apply to the next API request; deactivated users lose access immediately.</p></div></div>
         <div class="team-list">${rows || `<div class="list-empty">No team members yet.</div>`}</div>
       </section>
-      <section class="panel form-panel">
+      ${state.createAccountOpen ? `<section class="panel form-panel">
         <div class="form-section-title"><span class="section-index">＋</span><div><h2>Add a teammate</h2><p>Choose an initial password of at least 12 characters and share it with the person securely.</p></div></div>
         <form class="team-form" id="team-form">
           <label class="field"><span class="field-label">Name</span><input class="text-input" name="name" maxlength="100" autocomplete="name" required></label>
@@ -638,9 +639,9 @@ function renderTeam() {
           <label class="field"><span class="field-label">Initial password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
           <label class="field"><span class="field-label">Role</span><select class="select-input" name="role" required><option value="creator">Content creator</option><option value="reviewer">Reviewer</option><option value="admin">Administrator</option></select></label>
           <p class="validation-message" id="team-error" role="alert"></p>
-          <button class="button button-primary" type="submit">Add account <span class="button-icon">→</span></button>
+          <div class="team-form-actions"><button class="button button-secondary" type="button" data-action="cancel-create-signin">Cancel</button><button class="button button-primary" type="submit">Create sign-in <span class="button-icon">→</span></button></div>
         </form>
-      </section>
+      </section>` : ""}
     </div>
     <div class="human-note">${icon("shield")}<span>Administrators can manage accounts and guidelines. Creators can edit guidelines and submit reviews. Reviewers can update findings and record decisions. Only an administrator can change team access.</span></div>
   </section>`;
@@ -671,7 +672,7 @@ async function addTeamMember(event) {
     await api("/api/team", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values),
     });
-    form.reset();
+    state.createAccountOpen = false;
     await loadTeam();
     toast("Team account created.");
   } catch (error) {
@@ -888,6 +889,15 @@ document.addEventListener("click", async (event) => {
     if (action === "new-review") navigate("new");
     if (action === "go-history") navigate("history");
     if (action === "go-overview") navigate("overview");
+    if (action === "create-signin") {
+      state.createAccountOpen = true;
+      renderTeam();
+      document.querySelector('#team-form [name="name"]')?.focus();
+    }
+    if (action === "cancel-create-signin") {
+      state.createAccountOpen = false;
+      renderTeam();
+    }
     if (action === "toggle-member") {
       await updateTeamMember(Number(target.dataset.id), { is_active: target.dataset.active === "true" });
     }

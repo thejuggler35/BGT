@@ -173,6 +173,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .human-note svg { flex: 0 0 auto; width: 14px; height: 14px; margin-top: 1px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 
 .form-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(250px, .8fr); gap: 18px; align-items: start; }
+.form-layout-single { grid-template-columns: minmax(0, 1fr); }
 .form-panel { padding: 21px; }
 .form-section-title { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
 .form-section-title h2 { margin: 0; color: #3b3b3b; font: 700 15px "Manrope", sans-serif; }
@@ -316,6 +317,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .team-row small, .team-state { margin-top: 4px; color: #929292; font-size: 10px; }
 .team-form { display: grid; gap: 13px; }
 .team-form .button { justify-self: end; }
+.team-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .team-row button:disabled { opacity: .5; cursor: not-allowed; }
 
 .guide-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; margin-top: 22px; }

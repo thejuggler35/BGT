@@ -89,6 +89,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .login-card .page-title { font-size: 26px; }
 .login-form { display: grid; gap: 13px; margin-top: 24px; }
 .login-form .button { width: 100%; }
+.login-mode-button { width: 100%; margin-top: 10px; }
 .connection-layout { display: grid; min-height: calc(100vh - 150px); place-items: center; padding: 20px 0; }
 .connection-card { width: min(580px, 100%); padding: clamp(24px, 5vw, 42px); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
 .connection-mark { display: grid; width: 42px; height: 42px; place-items: center; margin-bottom: 25px; border: 1px solid var(--line); border-radius: 9px; background: #f7f7f7; color: #555555; }

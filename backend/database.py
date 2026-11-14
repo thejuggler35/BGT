@@ -85,6 +85,28 @@ def initialize_database():
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 decided_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('admin', 'creator', 'reviewer')),
+                is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS decision_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                review_id INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+                user_id INTEGER REFERENCES users(id),
+                status TEXT NOT NULL CHECK (status IN ('approved', 'changes_requested')),
+                note TEXT NOT NULL DEFAULT '',
+                decided_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS findings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 review_id INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
@@ -101,8 +123,20 @@ def initialize_database():
             );
             CREATE INDEX IF NOT EXISTS idx_reviews_created ON reviews(created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_findings_review ON findings(review_id);
+            CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_decisions_review ON decision_events(review_id, id);
             """
         )
+        review_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(reviews)").fetchall()
+        }
+        for column, definition in (
+            ("created_by", "INTEGER REFERENCES users(id)"),
+            ("decided_by", "INTEGER REFERENCES users(id)"),
+            ("assigned_to", "INTEGER REFERENCES users(id)"),
+        ):
+            if column not in review_columns:
+                conn.execute(f"ALTER TABLE reviews ADD COLUMN {column} {definition}")
         if conn.execute("SELECT 1 FROM brand_settings WHERE id = 1").fetchone() is None:
             conn.execute(
                 "INSERT INTO brand_settings (id, brand_name, brand_voice, tone_characteristics) VALUES (1, ?, ?, ?)",

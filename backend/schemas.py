@@ -1,3 +1,4 @@
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -71,3 +72,46 @@ class ReviewUpdate(BaseModel):
     status: Literal["approved", "changes_requested"] | None = None
     decision_note: str | None = Field(default=None, max_length=1000)
     findings: list[FindingUpdate] = Field(default_factory=list, max_length=200)
+    assigned_to: int | None = None
+
+
+class AccountCredentials(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def valid_email(cls, value):
+        normalized = value.strip().casefold()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("Enter a valid email address.")
+        return normalized
+
+
+class AccountSetup(AccountCredentials):
+    name: str = Field(min_length=1, max_length=100)
+    workspace_token: str = Field(default="", max_length=256)
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Name cannot be blank.")
+        return value.strip()
+
+
+class TeamMemberCreate(AccountCredentials):
+    name: str = Field(min_length=1, max_length=100)
+    role: Literal["admin", "creator", "reviewer"]
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value):
+        if not value.strip():
+            raise ValueError("Name cannot be blank.")
+        return value.strip()
+
+
+class TeamMemberUpdate(BaseModel):
+    role: Literal["admin", "creator", "reviewer"] | None = None
+    is_active: bool | None = None

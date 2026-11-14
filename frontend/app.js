@@ -12,6 +12,12 @@ const state = {
   draftText: "",
   uploadFile: null,
   authRequired: false,
+  accountsEnabled: false,
+  setupRequired: false,
+  bootstrapRequiresToken: false,
+  user: null,
+  team: [],
+  reviewers: [],
 };
 
 const iconPaths = {
@@ -29,6 +35,7 @@ const iconPaths = {
   shield: '<path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11"/><path d="m9 12 2 2 4-4"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"/>',
   x: '<path d="m18 6-12 12M6 6l12 12"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
 };
 
 function icon(name, className = "") {
@@ -37,7 +44,20 @@ function icon(name, className = "") {
 
 function syncAuthChrome() {
   const signOut = document.querySelector("#sign-out");
-  if (signOut) signOut.hidden = !state.authRequired || !sessionStorage.getItem("bgt-access-token");
+  if (signOut) signOut.hidden = !sessionStorage.getItem("bgt-access-token");
+}
+
+function syncProfileChrome() {
+  const name = state.user?.name || "BGT member";
+  const role = { admin: "Administrator", creator: "Content creator", reviewer: "Reviewer" }[state.user?.role] || "Workspace team";
+  const nameNode = document.querySelector("#profile-name");
+  const roleNode = document.querySelector("#profile-role");
+  const avatar = document.querySelector("#profile-avatar");
+  if (nameNode) nameNode.textContent = name;
+  if (roleNode) roleNode.textContent = role;
+  if (avatar) avatar.textContent = name.trim().charAt(0).toUpperCase() || "B";
+  const teamLink = document.querySelector('[data-route="team"]');
+  if (teamLink) teamLink.hidden = state.user?.role !== "admin";
 }
 
 function syncBrandChrome() {
@@ -130,7 +150,7 @@ function navigate(page, options = {}) {
 function parseRoute() {
   const parts = window.location.hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "review" && parts[1]) return { page: "review", id: Number(parts[1]) };
-  const allowed = ["overview", "brand", "new", "history", "guide"];
+  const allowed = ["overview", "brand", "new", "history", "guide", "team"];
   return { page: allowed.includes(parts[0]) ? parts[0] : "overview" };
 }
 
@@ -141,6 +161,7 @@ function renderRoute() {
   setActiveNav(route.page);
   syncBrandChrome();
   syncAuthChrome();
+  syncProfileChrome();
   closeMobileNav();
   const labels = {
     overview: "Overview",
@@ -149,34 +170,57 @@ function renderRoute() {
     history: "Review history",
     review: "Review report",
     guide: "Quick guide",
+    team: "Team members",
   };
   setBreadcrumb(labels[route.page]);
   if (!state.rules) return;
+  if (route.page === "team" && state.user?.role !== "admin") {
+    renderAccessDenied();
+    return;
+  }
+  if (route.page === "new" && state.user?.role === "reviewer") {
+    renderAccessDenied();
+    return;
+  }
   if (route.page === "overview") renderOverview();
   if (route.page === "brand") renderBrand();
   if (route.page === "new") renderNewReview();
   if (route.page === "history") renderHistory();
   if (route.page === "guide") renderGuide();
+  if (route.page === "team") renderTeam();
   if (route.page === "review") loadReview(route.id);
 }
 
-function renderLogin(errorMessage = "") {
-  setBreadcrumb("Sign in");
+function renderLogin(errorMessage = "", setup = state.setupRequired) {
+  setBreadcrumb(setup ? "Create administrator" : "Sign in");
   syncAuthChrome();
+  const accountMode = state.accountsEnabled || setup;
+  const title = setup ? "Set up your workspace" : "Welcome back";
+  const description = setup
+    ? "Create the first administrator account. This account can invite teammates and assign their workspace roles."
+    : accountMode ? "Sign in with your individual BGT account to open your team workspace." : "Enter your workspace access token to open your brand guidelines and review history.";
   app.innerHTML = `<section class="login-layout page-enter">
     <div class="login-card">
       <img class="brand-mark login-mark" src="static/bgt-logo.png" alt="BGT">
       <p class="eyebrow"><span class="eyebrow-dot"></span> PRIVATE WORKSPACE</p>
-      <h1 class="page-title">Welcome back</h1>
-      <p class="page-description">Enter your workspace access token to open your brand guidelines and review history.</p>
+      <h1 class="page-title">${title}</h1>
+      <p class="page-description">${description}</p>
       <form class="login-form" id="login-form">
-        <label class="field"><span class="field-label">Workspace access token</span><input class="text-input" name="token" type="password" autocomplete="current-password" required autofocus placeholder="Paste your access token"></label>
+        ${setup ? `<label class="field"><span class="field-label">Your name</span><input class="text-input" name="name" maxlength="100" autocomplete="name" required autofocus></label>` : ""}
+        ${accountMode ? `<label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="username" required ${setup ? "" : "autofocus"}></label>
+        <label class="field"><span class="field-label">Password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="${setup ? "new-password" : "current-password"}" required placeholder="${setup ? "At least 12 characters" : ""}"></label>
+        ${setup && state.bootstrapRequiresToken ? `<label class="field"><span class="field-label">Workspace setup token</span><input class="text-input" name="workspace_token" type="password" autocomplete="off" required></label>` : ""}` :
+    `<label class="field"><span class="field-label">Workspace access token</span><input class="text-input" name="token" type="password" autocomplete="current-password" required autofocus placeholder="Paste your access token"></label>`}
         <p class="validation-message" id="login-error" role="alert">${escapeHtml(errorMessage)}</p>
-            <button class="button button-primary" type="submit">Sign in <span class="button-icon">→</span></button>
+        <button class="button button-primary" type="submit">${setup ? "Create administrator" : "Sign in"} <span class="button-icon">→</span></button>
       </form>
-      <div class="human-note">${icon("shield")}<span>Your token is kept in this browser tab only and cleared when you close it.</span></div>
+      <div class="human-note">${icon("shield")}<span>${accountMode ? "Your sign-in session is kept in this browser tab only." : "Your token is kept in this browser tab only and cleared when you close it."}</span></div>
     </div>
   </section>`;
+}
+
+function renderAccessDenied() {
+  app.innerHTML = `<section class="review-not-found"><h1 class="page-title">Not available for this role</h1><p class="page-description">Your workspace role does not allow access to this page.</p><button class="button button-secondary" data-action="go-overview">Back to overview</button></section>`;
 }
 
 function renderConnectionError(error, needsConfiguration = false) {
@@ -222,7 +266,7 @@ function fileIcon(type) {
 function reviewRow(review) {
   return `<div class="review-row" role="link" tabindex="0" data-open-review="${review.id}">
     ${fileIcon(review.source_type)}
-    <div class="review-row-copy"><strong>${escapeHtml(review.title)}</strong><small>${escapeHtml(review.source_name)} · ${review.finding_count} ${review.finding_count === 1 ? "finding" : "findings"}</small></div>
+    <div class="review-row-copy"><strong>${escapeHtml(review.title)}</strong><small>${escapeHtml(review.source_name)} · ${review.finding_count} ${review.finding_count === 1 ? "finding" : "findings"} · by ${escapeHtml(review.created_by_name || "Workspace")}</small></div>
     <div class="review-row-meta">${statusChip(review.status)}<small>${formatDate(review.created_at, { month: "short", day: "numeric" })}</small></div>
   </div>`;
 }
@@ -284,12 +328,14 @@ function renderFactRows(facts) {
 
 function renderBrand() {
   const rules = state.rules;
+  const readOnly = state.user?.role === "reviewer";
   const total = rules.restricted_terms.length + rules.preferred_terms.length + rules.product_facts.length;
   app.innerHTML = `<section class="page-enter">
     <div class="page-heading-row">
       <div><p class="eyebrow"><span class="eyebrow-dot"></span> YOUR BRAND KNOWLEDGE</p><h1 class="page-title">Brand guidelines</h1><p class="page-description">One reliable source of truth for the language and product details BGT checks against.</p></div>
       <span class="save-status" id="brand-save-status" role="status"></span>
     </div>
+    ${readOnly ? `<div class="human-note">${icon("shield")}<span>Brand guidelines are read-only for reviewers. Ask an administrator or content creator to make changes.</span></div>` : ""}
     <div class="form-layout">
       <form class="panel form-panel" id="brand-form">
         <div class="form-section-title"><span class="section-index">01</span><div><h2>Brand profile</h2><p>Give reviewers the context behind your brand voice.</p></div></div>
@@ -324,6 +370,11 @@ function renderBrand() {
       </aside>
     </div>
   </section>`;
+  if (readOnly) {
+    app.querySelectorAll("#brand-form input, #brand-form textarea, #brand-form button").forEach((field) => {
+      field.disabled = true;
+    });
+  }
 }
 
 function captureBrandForm() {
@@ -510,7 +561,7 @@ async function submitReview() {
 
 function historyItem(review) {
   return `<div class="history-item" role="link" tabindex="0" data-open-review="${review.id}">
-    <div class="history-title">${fileIcon(review.source_type)}<div><strong>${escapeHtml(review.title)}</strong><small>${escapeHtml(review.source_name)}</small></div></div>
+    <div class="history-title">${fileIcon(review.source_type)}<div><strong>${escapeHtml(review.title)}</strong><small>${escapeHtml(review.source_name)} · by ${escapeHtml(review.created_by_name || "Workspace")}</small></div></div>
     <span class="history-cell">${escapeHtml(review.source_type.toUpperCase())}</span>
     <span class="history-cell">${formatDate(review.created_at, { month: "short", day: "numeric", year: "numeric" })}</span>
     ${statusChip(review.status)}
@@ -528,6 +579,72 @@ function renderHistory(filterText = "") {
     <div class="history-toolbar"><label class="search-field">${icon("search")}<input class="text-input" type="search" id="history-search" placeholder="Search reviews by title or file" value="${escapeHtml(filterText)}" aria-label="Search reviews"></label><span class="field-hint">${reviews.length} ${reviews.length === 1 ? "review" : "reviews"} saved</span></div>
     <section class="panel history-list">${reviews.length ? `<div class="history-header"><span>Review</span><span>Source type</span><span>Date created</span><span>Status</span><span>Findings</span></div>${reviews.map(historyItem).join("")}` : `<div class="list-empty">${normalized ? "No reviews match that search." : "No saved reviews yet. Your completed checks will appear here."}</div>`}</section>
   </section>`;
+}
+
+function renderTeam() {
+  const rows = state.team.map((member) => `<div class="team-row">
+    <div><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.email)}</small></div>
+    <select class="select-input" data-team-role="${member.id}" aria-label="Role for ${escapeHtml(member.name)}">
+      ${["admin", "creator", "reviewer"].map((role) => `<option value="${role}" ${member.role === role ? "selected" : ""}>${{ admin: "Administrator", creator: "Content creator", reviewer: "Reviewer" }[role]}</option>`).join("")}
+    </select>
+    <span class="team-state">${member.is_active ? "Active" : "Deactivated"}</span>
+    <button class="button button-secondary button-small" type="button" data-action="toggle-member" data-id="${member.id}" data-active="${member.is_active ? "false" : "true"}" ${member.id === state.user.id ? "disabled" : ""}>${member.is_active ? "Deactivate" : "Reactivate"}</button>
+  </div>`).join("");
+  app.innerHTML = `<section class="page-enter">
+    <div class="page-heading-row"><div><p class="eyebrow"><span class="eyebrow-dot"></span> WORKSPACE ACCESS</p><h1 class="page-title">Team members</h1><p class="page-description">Create individual accounts and assign the least-privilege role each teammate needs.</p></div></div>
+    <div class="form-layout">
+      <section class="panel team-panel"><div class="panel-heading"><div><h2>People</h2><p>Role changes apply to the next API request; deactivated users lose access immediately.</p></div></div>
+        <div class="team-list">${rows || `<div class="list-empty">No team members yet.</div>`}</div>
+      </section>
+      <section class="panel form-panel">
+        <div class="form-section-title"><span class="section-index">＋</span><div><h2>Add a teammate</h2><p>Choose an initial password of at least 12 characters and share it with the person securely.</p></div></div>
+        <form class="team-form" id="team-form">
+          <label class="field"><span class="field-label">Name</span><input class="text-input" name="name" maxlength="100" autocomplete="name" required></label>
+          <label class="field"><span class="field-label">Email</span><input class="text-input" name="email" type="email" maxlength="254" autocomplete="email" required></label>
+          <label class="field"><span class="field-label">Initial password</span><input class="text-input" name="password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+          <label class="field"><span class="field-label">Role</span><select class="select-input" name="role" required><option value="creator">Content creator</option><option value="reviewer">Reviewer</option><option value="admin">Administrator</option></select></label>
+          <p class="validation-message" id="team-error" role="alert"></p>
+          <button class="button button-primary" type="submit">Add account <span class="button-icon">→</span></button>
+        </form>
+      </section>
+    </div>
+    <div class="human-note">${icon("shield")}<span>Administrators can manage accounts and guidelines. Creators can edit guidelines and submit reviews. Reviewers can update findings and record decisions. Only an administrator can change team access.</span></div>
+  </section>`;
+}
+
+async function loadTeam() {
+  state.team = await api("/api/team");
+  renderTeam();
+}
+
+async function updateTeamMember(id, changes) {
+  await api(`/api/team/${id}`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(changes),
+  });
+  await loadTeam();
+  toast("Team access updated.");
+}
+
+async function addTeamMember(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector('[type="submit"]');
+  const errorNode = document.querySelector("#team-error");
+  errorNode.textContent = "";
+  button.disabled = true;
+  try {
+    const values = Object.fromEntries(new FormData(form));
+    await api("/api/team", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values),
+    });
+    form.reset();
+    await loadTeam();
+    toast("Team account created.");
+  } catch (error) {
+    errorNode.textContent = error.message || "The account could not be created.";
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function findingLabel(severity) {
@@ -551,24 +668,29 @@ function selectedFinding(review) {
 function findingDetail(finding) {
   if (!finding) return `<div class="finding-details"><p class="detail-copy">No findings were raised by the current checks. A human reviewer still needs to record a decision.</p></div>`;
   const resolved = finding.state !== "open";
+  const canReview = ["admin", "reviewer"].includes(state.user?.role);
   return `<div class="finding-details">
     <div class="detail-title-row"><h3>${escapeHtml(finding.title)}</h3><span class="severity-chip severity-${escapeHtml(finding.severity)}">${escapeHtml(findingLabel(finding.severity))}</span></div>
     <p class="detail-copy">${escapeHtml(finding.explanation)}</p>
     ${finding.matched_text ? `<div class="evidence-block"><span>Draft excerpt</span><p>“${escapeHtml(finding.matched_text)}”</p></div>` : ""}
     ${finding.evidence ? `<div class="evidence-block"><span>Supporting evidence</span><p>${escapeHtml(finding.evidence)}</p></div>` : ""}
     ${finding.guideline ? `<div class="evidence-block"><span>Related brand guideline</span><p>${escapeHtml(finding.guideline)}</p></div>` : ""}
-    ${finding.suggestion ? `<div class="field suggestion-field"><label for="suggestion-${finding.id}">Suggested correction <span class="field-hint">(editable; not applied automatically)</span></label><textarea class="text-area" id="suggestion-${finding.id}" maxlength="1000">${escapeHtml(finding.suggestion)}</textarea></div>` : ""}
-    <div class="detail-actions">
+    ${finding.suggestion ? `<div class="field suggestion-field"><label for="suggestion-${finding.id}">Suggested correction <span class="field-hint">(editable; not applied automatically)</span></label><textarea class="text-area" id="suggestion-${finding.id}" maxlength="1000" ${canReview ? "" : "readonly"}>${escapeHtml(finding.suggestion)}</textarea></div>` : ""}
+    ${canReview ? `<div class="detail-actions">
       ${finding.suggestion ? `<button class="button button-secondary button-small" data-action="copy-suggestion" data-id="${finding.id}">Copy suggestion</button><button class="button button-secondary button-small" data-action="save-suggestion" data-id="${finding.id}">Save edit</button>` : ""}
       ${!resolved ? `${finding.suggestion ? `<button class="button button-quiet button-small" data-action="accept-finding" data-id="${finding.id}">Accept suggestion</button>` : ""}<button class="button button-quiet button-small" data-action="resolve-finding" data-id="${finding.id}">Mark resolved</button><button class="button button-quiet button-small" data-action="dismiss-finding" data-id="${finding.id}">Dismiss</button>` : `<span class="finding-resolved">Marked ${escapeHtml(finding.state)}</span>`}
-    </div>
+    </div>` : `<p class="field-hint">Only reviewers and administrators can edit findings.</p>`}
   </div>`;
 }
 
 function reviewDecision(review) {
+  const canDecide = ["admin", "reviewer"].includes(state.user?.role);
   if (review.status !== "needs_review") {
-    return `<section class="panel decision-panel"><div class="decision-summary">${icon(review.status === "approved" ? "check" : "edit")}<span><strong>${review.status === "approved" ? "Review approved by a human" : "Changes requested by a human"}</strong>${review.decision_note ? escapeHtml(review.decision_note) : `Decision recorded ${formatDate(review.decided_at)}.`}</span></div></section>`;
+    const history = review.decision_history || [];
+    return `<section class="panel decision-panel"><div class="decision-summary">${icon(review.status === "approved" ? "check" : "edit")}<span><strong>${review.status === "approved" ? "Review approved by a human" : "Changes requested by a human"}</strong>${review.decision_note ? escapeHtml(review.decision_note) : `Decision recorded ${formatDate(review.decided_at)}.`}<br>By ${escapeHtml(review.decided_by_name || "Workspace")} · ${formatDate(review.decided_at)}</span></div>
+      ${history.length > 1 ? `<div class="decision-history"><strong>Decision history</strong>${history.map((item) => `<p>${item.status === "approved" ? "Approved" : "Changes requested"} by ${escapeHtml(item.decided_by_name)} · ${formatDate(item.decided_at)}${item.note ? ` — ${escapeHtml(item.note)}` : ""}</p>`).join("")}</div>` : ""}</section>`;
   }
+  if (!canDecide) return `<section class="panel decision-panel"><div class="decision-copy"><h2>Awaiting reviewer</h2><p>A reviewer or administrator must record the final decision.</p></div></section>`;
   return `<section class="panel decision-panel">
     <div class="decision-copy"><h2>Human review</h2><p>A person makes the final decision, even when no checks raise a finding.</p></div>
     <textarea class="text-area" id="decision-note" maxlength="1000" placeholder="Optional reviewer note for the history record"></textarea>
@@ -579,8 +701,13 @@ function reviewDecision(review) {
 async function loadReview(id) {
   app.innerHTML = `<div class="loading-view"><span class="loader"></span><span>Opening review…</span></div>`;
   try {
-    const review = await api(`/api/reviews/${id}`);
+    const canAssign = ["admin", "creator"].includes(state.user?.role);
+    const [review, reviewers] = await Promise.all([
+      api(`/api/reviews/${id}`),
+      canAssign ? api("/api/team/reviewers") : Promise.resolve([]),
+    ]);
     state.currentReview = review;
+    state.reviewers = reviewers;
     if (!review.findings.some((finding) => finding.id === state.selectedFindingId)) {
       state.selectedFindingId = review.findings[0]?.id || null;
     }
@@ -591,6 +718,7 @@ async function loadReview(id) {
 }
 
 function renderReview(review) {
+  const canAssign = ["admin", "creator"].includes(state.user?.role);
   const openCount = review.findings.filter((finding) => finding.state === "open").length;
   const selected = selectedFinding(review);
   const visibleFindings = review.findings.filter((finding) => {
@@ -601,7 +729,8 @@ function renderReview(review) {
   app.innerHTML = `<section class="page-enter">
     <div class="report-top">
       <div><p class="eyebrow"><span class="eyebrow-dot"></span> REVIEW REPORT</p><h1 class="page-title">${escapeHtml(review.title)}</h1>
-        <div class="report-meta"><span>${icon("file")} ${escapeHtml(review.source_name)}</span><span>${icon("clock")} ${formatDate(review.created_at)}</span><span>${escapeHtml(review.source_type.toUpperCase())} source</span></div>
+        <div class="report-meta"><span>${icon("file")} ${escapeHtml(review.source_name)}</span><span>${icon("clock")} ${formatDate(review.created_at)}</span><span>Created by ${escapeHtml(review.created_by_name || "Workspace")}</span><span>${escapeHtml(review.source_type.toUpperCase())} source</span></div>
+        ${canAssign ? `<label class="assignment-control">Assigned reviewer<select class="select-input" data-assigned-reviewer="${review.id}"><option value="">Unassigned</option>${state.reviewers.map((reviewer) => `<option value="${reviewer.id}" ${review.assigned_to === reviewer.id ? "selected" : ""}>${escapeHtml(reviewer.name)}</option>`).join("")}</select></label>` : review.assigned_to_name ? `<p class="assignment-caption">Assigned reviewer: ${escapeHtml(review.assigned_to_name)}</p>` : ""}
       </div>
       <div class="report-stats"><div class="report-stat"><strong>${review.finding_count}</strong><span>Findings</span></div><div class="report-stat"><strong>${openCount}</strong><span>Open</span></div><div class="report-stat">${statusChip(review.status)}</div></div>
     </div>
@@ -642,6 +771,26 @@ async function saveDecision(status) {
   if (index >= 0) state.reviews[index] = updated;
   toast(status === "approved" ? "Human approval recorded." : "Change request recorded.");
   renderReview(updated);
+}
+
+async function saveAssignment(select) {
+  const review = state.currentReview;
+  const assignedTo = select.value ? Number(select.value) : null;
+  select.disabled = true;
+  try {
+    const updated = await api(`/api/reviews/${review.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigned_to: assignedTo }),
+    });
+    state.currentReview = updated;
+    const index = state.reviews.findIndex((item) => item.id === updated.id);
+    if (index >= 0) state.reviews[index] = updated;
+    toast(assignedTo ? "Reviewer assigned." : "Review unassigned.");
+    renderReview(updated);
+  } catch (error) {
+    toast(error.message || "The review assignment could not be saved.", true);
+    renderReview(review);
+  }
 }
 
 function renderGuide() {
@@ -698,6 +847,10 @@ document.addEventListener("click", async (event) => {
     }
     if (action === "new-review") navigate("new");
     if (action === "go-history") navigate("history");
+    if (action === "go-overview") navigate("overview");
+    if (action === "toggle-member") {
+      await updateTeamMember(Number(target.dataset.id), { is_active: target.dataset.active === "true" });
+    }
     if (action === "choose-file") document.querySelector("#document-file")?.click();
     if (action === "clear-draft") {
       document.querySelector("#draft-text").value = "";
@@ -761,6 +914,7 @@ document.addEventListener("click", async (event) => {
 
 document.addEventListener("submit", (event) => {
   if (event.target.id === "brand-form") saveBrand(event);
+  if (event.target.id === "team-form") addTeamMember(event);
 });
 
 document.addEventListener("input", (event) => {
@@ -776,6 +930,11 @@ document.addEventListener("input", (event) => {
 
 document.addEventListener("change", (event) => {
   if (event.target.id === "document-file" && event.target.files?.[0]) showSelectedFile(event.target.files[0]);
+  if (event.target.matches("[data-assigned-reviewer]")) saveAssignment(event.target);
+  if (event.target.matches("[data-team-role]")) {
+    updateTeamMember(Number(event.target.dataset.teamRole), { role: event.target.value })
+      .catch((error) => toast(error.message, true));
+  }
 });
 
 document.addEventListener("dragover", (event) => {
@@ -807,11 +966,17 @@ document.querySelector("#mobile-menu").addEventListener("click", () => {
 });
 document.querySelector("#mobile-backdrop").addEventListener("click", closeMobileNav);
 document.querySelector("#header-help").addEventListener("click", () => navigate("guide"));
-document.querySelector("#sign-out").addEventListener("click", () => {
+document.querySelector("#sign-out").addEventListener("click", async () => {
+  try {
+    await api("/api/auth/session", { method: "DELETE" });
+  } catch (error) {
+    toast(error.message || "The session could not be revoked.", true);
+  }
   sessionStorage.removeItem("bgt-access-token");
   state.rules = null;
   state.reviews = [];
-  renderLogin();
+  state.user = null;
+  renderLogin("", false);
 });
 window.addEventListener("hashchange", renderRoute);
 document.addEventListener("keydown", (event) => {
@@ -837,20 +1002,31 @@ async function init() {
   try {
     const config = await api("/api/auth/config");
     state.authRequired = config.required;
-    if (state.authRequired && !sessionStorage.getItem("bgt-access-token")) {
-      renderLogin();
+    state.accountsEnabled = config.accounts_enabled;
+    state.setupRequired = config.setup_required;
+    state.bootstrapRequiresToken = config.bootstrap_requires_token;
+    if (state.setupRequired) {
+      renderLogin("", true);
       return;
     }
-    const [health, rules, reviews] = await Promise.all([api("/api/health"), api("/api/brand-rules"), api("/api/reviews")]);
+    if ((state.accountsEnabled || state.authRequired) && !sessionStorage.getItem("bgt-access-token")) {
+      renderLogin("", false);
+      return;
+    }
+    const [health, rules, reviews, user] = await Promise.all([
+      api("/api/health"), api("/api/brand-rules"), api("/api/reviews"), api("/api/auth/me"),
+    ]);
     if (health.status !== "ok") throw new Error("The BGT API did not report a healthy status.");
     state.rules = rules;
     state.reviews = reviews;
+    state.user = user;
     setWorkspaceStatus("Workspace active");
+    syncProfileChrome();
     renderRoute();
   } catch (error) {
-    if (error.status === 401 && state.authRequired) {
+    if (error.status === 401 && (state.authRequired || state.accountsEnabled)) {
       sessionStorage.removeItem("bgt-access-token");
-      renderLogin("Your access token has expired or is not valid. Try again.");
+      renderLogin("Your account session has expired or is not valid. Sign in again.", false);
       return;
     }
     renderConnectionError(error);
@@ -862,16 +1038,31 @@ document.addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.target;
   const button = form.querySelector('[type="submit"]');
-  const token = new FormData(form).get("token").toString().trim();
+  const values = Object.fromEntries(new FormData(form));
   button.disabled = true;
-  button.textContent = "Signing in…";
-  sessionStorage.setItem("bgt-access-token", token);
+  button.textContent = state.setupRequired ? "Creating account…" : "Signing in…";
   try {
-    await api("/api/auth/session", { method: "POST" });
+    let result;
+    if (state.setupRequired) {
+      result = await api("/api/auth/setup", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values),
+      });
+    } else if (state.accountsEnabled) {
+      result = await api("/api/auth/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: values.email, password: values.password }),
+      });
+    } else {
+      sessionStorage.setItem("bgt-access-token", String(values.token).trim());
+      await api("/api/auth/session", { method: "POST" });
+      await init();
+      return;
+    }
+    sessionStorage.setItem("bgt-access-token", result.token);
     await init();
   } catch (error) {
     sessionStorage.removeItem("bgt-access-token");
-    renderLogin(error.message);
+    renderLogin(error.message, state.setupRequired);
   }
 });
 

@@ -46,7 +46,17 @@ Generate a token locally, for example with `python -c "import secrets; print(sec
 
 In the GitHub repository, add `BGT_API_BASE_URL` under **Settings → Secrets and variables → Actions → Variables**. This URL is public configuration, not a credential. Run **Actions → Deploy BGT to GitHub Pages** after changing the value.
 
-When authentication is enabled, BGT asks reviewers for the shared workspace token. It is held in the browser tab's session storage. Anyone with the token can access the shared workspace; this is not an individual account or role system. Use HTTPS and keep the Railway service to one instance while it uses SQLite. Hosting costs depend on the provider's plan and usage.
+The first visit to a new database prompts you to create an administrator account. On a deployed service, configure `BGT_API_TOKEN` before setup; the first administrator must provide this token. Without it, initial setup is intentionally available to the first visitor, so do not expose an unconfigured service to the public internet. Existing databases and reviews are preserved by additive SQLite migrations.
+
+Administrators can add and deactivate team accounts from **Team members**. Accounts have individual email/password sign-in and seven-day browser-tab sessions. Passwords are stored as salted PBKDF2 hashes. Share initial passwords with teammates securely. Roles are enforced by the API:
+
+| Role | Permissions |
+| --- | --- |
+| Administrator | Manage accounts, guidelines, reviews, findings, and decisions |
+| Content creator | Edit guidelines, create reviews, and assign them to active reviewers |
+| Reviewer | Update findings and record decisions on reviews assigned to them |
+
+Review records show who created them and who recorded each decision, with decision history retained. The configured `BGT_API_TOKEN` remains a high-privilege administrator recovery credential; keep it private. Use HTTPS and keep the Railway service to one instance while it uses SQLite. Hosting costs depend on the provider's plan and usage.
 
 ## Review a draft
 
@@ -59,6 +69,9 @@ When authentication is enabled, BGT asks reviewers for the shared workspace toke
 
 - `GET /api/health`
 - `GET /api/auth/config`
+- `POST /api/auth/setup` to create the first administrator account
+- `POST /api/auth/login` and `GET /api/auth/me`
+- `GET /api/team`, `POST /api/team`, and `PATCH /api/team/{id}` (administrators)
 - `POST /api/auth/session`
 - `GET` and `PUT /api/brand-rules`
 - `POST /api/reviews` for pasted text or PDF/DOCX uploads
@@ -73,4 +86,4 @@ Protected API requests use the `Authorization: Bearer <token>` header when `BGT_
 - Extracted draft text is stored in the database with the review. Uploaded file bytes are processed in memory and are not retained.
 - Drafts are limited to 200,000 characters.
 - Numeric checks require matching product and fact context; they do not establish legal or scientific accuracy.
-- BGT does not provide image or logo review, individual user accounts, role-based access, or automated content approval.
+- BGT does not provide image or logo review, email-based password recovery, or automated content approval.

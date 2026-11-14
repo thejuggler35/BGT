@@ -1,10 +1,13 @@
+import hashlib
 import hmac
 import os
+import secrets
+import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +15,24 @@ from fastapi.staticfiles import StaticFiles
 from backend.compliance import check_content
 from backend.database import connection, get_brand_rules, initialize_database, save_brand_rules
 from backend.document_parser import MAX_UPLOAD_BYTES, extract_text
-from backend.schemas import BrandRules, ReviewUpdate
+from backend.schemas import (
+    AccountCredentials,
+    AccountSetup,
+    BrandRules,
+    ReviewUpdate,
+    TeamMemberCreate,
+    TeamMemberUpdate,
+)
+
+PASSWORD_ITERATIONS = 310_000
+SESSION_DAYS = 7
+PUBLIC_AUTH_PATHS = {
+    "/api/health",
+    "/api/auth/config",
+    "/api/auth/login",
+    "/api/auth/setup",
+    "/api/auth/session",
+}
 
 
 @asynccontextmanager
@@ -37,17 +57,35 @@ cors_origins = [
 
 @app.middleware("http")
 async def protect_api_and_set_headers(request: Request, call_next):
-    protected_paths = {"/api/health", "/api/auth/config", "/api/auth/session"}
     expected_token = os.environ.get("BGT_API_TOKEN", "")
-    if (
-        expected_token
-        and request.method != "OPTIONS"
-        and request.url.path.startswith("/api/")
-        and request.url.path not in protected_paths
-    ):
+    response = None
+    if request.method != "OPTIONS" and request.url.path.startswith("/api/") and request.url.path not in PUBLIC_AUTH_PATHS:
+        with connection() as conn:
+            has_accounts = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
         auth_header = request.headers.get("authorization", "")
         scheme, _, supplied_token = auth_header.partition(" ")
-        if scheme.lower() != "bearer" or not hmac.compare_digest(supplied_token, expected_token):
+        actor = None
+        if scheme.lower() == "bearer" and supplied_token:
+            if expected_token and hmac.compare_digest(supplied_token, expected_token):
+                actor = {"id": None, "name": "Workspace administrator", "email": "", "role": "admin"}
+            else:
+                token_hash = hashlib.sha256(supplied_token.encode()).hexdigest()
+                with connection() as conn:
+                    row = conn.execute(
+                        """
+                        SELECT users.id, users.name, users.email, users.role
+                        FROM user_sessions
+                        JOIN users ON users.id = user_sessions.user_id
+                        WHERE user_sessions.token_hash = ? AND user_sessions.expires_at > ?
+                            AND users.is_active = 1
+                        """,
+                        (token_hash, datetime.now(timezone.utc).isoformat(timespec="seconds")),
+                    ).fetchone()
+                if row is not None:
+                    actor = dict(row)
+        if actor is not None:
+            request.state.actor = actor
+        elif has_accounts or expected_token:
             response = JSONResponse(status_code=401, content={"detail": "Sign in to access this workspace."})
         else:
             response = None
@@ -85,9 +123,58 @@ async def protect_api_and_set_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_methods=["GET", "POST", "PUT", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+
+def require_role(actor, *roles):
+    if actor["role"] not in roles:
+        raise HTTPException(status_code=403, detail="Your account does not have permission to do that.")
+
+
+def current_actor(request: Request):
+    actor = getattr(request.state, "actor", None)
+    if actor is not None:
+        return actor
+    with connection() as conn:
+        has_accounts = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+    if has_accounts or os.environ.get("BGT_API_TOKEN"):
+        raise HTTPException(status_code=401, detail="Sign in to access this workspace.")
+    return {"id": None, "name": "Local workspace", "email": "", "role": "admin"}
+
+
+def hash_password(password):
+    salt = secrets.token_bytes(16)
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, PASSWORD_ITERATIONS)
+    return f"pbkdf2_sha256${PASSWORD_ITERATIONS}${salt.hex()}${derived.hex()}"
+
+
+def verify_password(password, encoded):
+    try:
+        algorithm, iterations, salt, expected = encoded.split("$")
+        if algorithm != "pbkdf2_sha256":
+            return False
+        derived = hashlib.pbkdf2_hmac("sha256", password.encode(), bytes.fromhex(salt), int(iterations))
+        return hmac.compare_digest(derived.hex(), expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def create_session(conn, user):
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)).isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+        (hashlib.sha256(token.encode()).hexdigest(), user["id"], expires_at),
+    )
+    return {"token": token, "expires_at": expires_at, "user": dict(user)}
+
+
+def serialize_team_member(row):
+    member = dict(row)
+    member["is_active"] = bool(member["is_active"])
+    return member
 
 
 def _serialize_finding(row):
@@ -96,6 +183,37 @@ def _serialize_finding(row):
 
 def _serialize_review(conn, row):
     review = dict(row)
+    if review.get("created_by") is not None:
+        creator = conn.execute("SELECT name FROM users WHERE id = ?", (review["created_by"],)).fetchone()
+        review["created_by_name"] = creator["name"] if creator else "Former team member"
+    else:
+        review["created_by_name"] = "Workspace"
+    if review.get("decided_by") is not None:
+        decider = conn.execute("SELECT name FROM users WHERE id = ?", (review["decided_by"],)).fetchone()
+        review["decided_by_name"] = decider["name"] if decider else "Former team member"
+    else:
+        review["decided_by_name"] = None
+    if review.get("assigned_to") is not None:
+        assignee = conn.execute(
+            "SELECT name FROM users WHERE id = ? AND is_active = 1", (review["assigned_to"],)
+        ).fetchone()
+        review["assigned_to_name"] = assignee["name"] if assignee else "Inactive team member"
+    else:
+        review["assigned_to_name"] = None
+    events = conn.execute(
+        """
+        SELECT decision_events.status, decision_events.note, decision_events.decided_at,
+               users.name AS decided_by_name
+        FROM decision_events
+        LEFT JOIN users ON users.id = decision_events.user_id
+        WHERE decision_events.review_id = ? ORDER BY decision_events.id
+        """,
+        (review["id"],),
+    ).fetchall()
+    review["decision_history"] = [
+        {**dict(event), "decided_by_name": event["decided_by_name"] or "Workspace"}
+        for event in events
+    ]
     finding_rows = conn.execute(
         "SELECT * FROM findings WHERE review_id = ? ORDER BY id", (review["id"],)
     ).fetchall()
@@ -119,7 +237,55 @@ def health():
 
 @app.get("/api/auth/config")
 def auth_config():
-    return {"required": bool(os.environ.get("BGT_API_TOKEN"))}
+    with connection() as conn:
+        accounts_enabled = conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+    return {
+        "required": bool(os.environ.get("BGT_API_TOKEN")),
+        "accounts_enabled": accounts_enabled,
+        "setup_required": not accounts_enabled,
+        "bootstrap_requires_token": bool(os.environ.get("BGT_API_TOKEN")),
+    }
+
+
+@app.post("/api/auth/setup")
+def setup_first_account(setup: AccountSetup):
+    expected_token = os.environ.get("BGT_API_TOKEN", "")
+    if expected_token and not hmac.compare_digest(setup.workspace_token, expected_token):
+        raise HTTPException(status_code=401, detail="The workspace access token is not correct.")
+    with connection() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        if conn.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None:
+            raise HTTPException(status_code=409, detail="The first administrator account has already been created.")
+        cursor = conn.execute(
+            "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, 'admin')",
+            (setup.name, setup.email, hash_password(setup.password)),
+        )
+        user = conn.execute(
+            "SELECT id, name, email, role FROM users WHERE id = ?", (cursor.lastrowid,)
+        ).fetchone()
+        return create_session(conn, user)
+
+
+@app.post("/api/auth/login")
+def login(credentials: AccountCredentials):
+    with connection() as conn:
+        user = conn.execute(
+            "SELECT id, name, email, password_hash, role, is_active FROM users WHERE email = ?",
+            (credentials.email,),
+        ).fetchone()
+        valid = user is not None and user["is_active"] and verify_password(credentials.password, user["password_hash"])
+        if not valid:
+            hashlib.pbkdf2_hmac(
+                "sha256", credentials.password.encode(), b"bgt-login-no-user", PASSWORD_ITERATIONS
+            )
+            raise HTTPException(status_code=401, detail="Email or password is not correct.")
+        conn.execute("DELETE FROM user_sessions WHERE expires_at <= ?", (datetime.now(timezone.utc).isoformat(),))
+        return create_session(conn, {key: user[key] for key in ("id", "name", "email", "role")})
+
+
+@app.get("/api/auth/me")
+def read_current_user(actor=Depends(current_actor)):
+    return actor
 
 
 @app.post("/api/auth/session")
@@ -135,6 +301,80 @@ def create_auth_session(authorization: str | None = Header(default=None)):
     return {"authenticated": True}
 
 
+@app.delete("/api/auth/session")
+def revoke_current_session(request: Request):
+    auth_header = request.headers.get("authorization", "")
+    _, _, token = auth_header.partition(" ")
+    if token and not hmac.compare_digest(token, os.environ.get("BGT_API_TOKEN", "")):
+        with connection() as conn:
+            conn.execute("DELETE FROM user_sessions WHERE token_hash = ?", (hashlib.sha256(token.encode()).hexdigest(),))
+    return {"authenticated": False}
+
+
+@app.get("/api/team")
+def list_team(actor=Depends(current_actor)):
+    require_role(actor, "admin")
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name, email, role, is_active, created_at FROM users ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        return [serialize_team_member(row) for row in rows]
+
+
+@app.get("/api/team/reviewers")
+def list_reviewers(actor=Depends(current_actor)):
+    require_role(actor, "admin", "creator")
+    with connection() as conn:
+        rows = conn.execute(
+            "SELECT id, name FROM users WHERE role = 'reviewer' AND is_active = 1 ORDER BY name COLLATE NOCASE"
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+@app.post("/api/team", status_code=201)
+def add_team_member(member: TeamMemberCreate, actor=Depends(current_actor)):
+    require_role(actor, "admin")
+    with connection() as conn:
+        try:
+            cursor = conn.execute(
+                "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                (member.name, member.email, hash_password(member.password), member.role),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="An account with that email already exists.") from exc
+        row = conn.execute(
+            "SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?",
+            (cursor.lastrowid,),
+        ).fetchone()
+        return serialize_team_member(row)
+
+
+@app.patch("/api/team/{user_id}")
+def update_team_member(user_id: int, update: TeamMemberUpdate, actor=Depends(current_actor)):
+    require_role(actor, "admin")
+    if update.role is None and update.is_active is None:
+        raise HTTPException(status_code=422, detail="Provide a role or account status change.")
+    with connection() as conn:
+        user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if user is None:
+            raise HTTPException(status_code=404, detail="Team member not found.")
+        new_role = update.role or user["role"]
+        new_active = user["is_active"] if update.is_active is None else int(update.is_active)
+        if user_id == actor["id"] and not new_active:
+            raise HTTPException(status_code=409, detail="You cannot deactivate your own account.")
+        if user["role"] == "admin" and user["is_active"] and (new_role != "admin" or not new_active):
+            admins = conn.execute(
+                "SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1"
+            ).fetchone()["count"]
+            if admins <= 1:
+                raise HTTPException(status_code=409, detail="The workspace must keep at least one active administrator.")
+        conn.execute("UPDATE users SET role = ?, is_active = ? WHERE id = ?", (new_role, new_active, user_id))
+        row = conn.execute(
+            "SELECT id, name, email, role, is_active, created_at FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        return serialize_team_member(row)
+
+
 @app.get("/api/brand-rules")
 def read_brand_rules():
     with connection() as conn:
@@ -142,7 +382,8 @@ def read_brand_rules():
 
 
 @app.put("/api/brand-rules")
-def update_brand_rules(rules: BrandRules):
+def update_brand_rules(rules: BrandRules, actor=Depends(current_actor)):
+    require_role(actor, "admin", "creator")
     with connection() as conn:
         save_brand_rules(conn, rules)
         return get_brand_rules(conn)
@@ -153,7 +394,9 @@ async def create_review(
     text: str = Form(default=""),
     title: str = Form(default=""),
     file: UploadFile | None = File(default=None),
+    actor=Depends(current_actor),
 ):
+    require_role(actor, "admin", "creator")
     source_type = "text"
     source_name = "Pasted text"
     content = text.strip()
@@ -178,14 +421,15 @@ async def create_review(
         rules = get_brand_rules(conn)
         cursor = conn.execute(
             """
-            INSERT INTO reviews (title, source_name, source_type, content)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO reviews (title, source_name, source_type, content, created_by)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (
                 title.strip()[:160] or (Path(source_name).stem if source_type != "text" else "Untitled review"),
                 source_name,
                 source_type,
                 content,
+                actor["id"],
             ),
         )
         review_id = cursor.lastrowid
@@ -232,26 +476,51 @@ def get_review(review_id: int):
 
 
 @app.patch("/api/reviews/{review_id}")
-def update_review(review_id: int, update: ReviewUpdate):
-    if update.status is None and not update.findings and update.decision_note is None:
+def update_review(review_id: int, update: ReviewUpdate, actor=Depends(current_actor)):
+    has_assignment = "assigned_to" in update.model_fields_set
+    has_review_updates = update.status is not None or bool(update.findings) or update.decision_note is not None
+    if not has_assignment and not has_review_updates:
         raise HTTPException(status_code=422, detail="Provide a review decision or at least one finding update.")
+    if has_assignment:
+        require_role(actor, "admin", "creator")
+    if has_review_updates:
+        require_role(actor, "admin", "reviewer")
     with connection() as conn:
         review = conn.execute("SELECT * FROM reviews WHERE id = ?", (review_id,)).fetchone()
         if review is None:
             raise HTTPException(status_code=404, detail="Review not found.")
+        if has_review_updates and actor["role"] == "reviewer" and review["assigned_to"] != actor["id"]:
+            raise HTTPException(status_code=403, detail="This review is not assigned to your account.")
+        if has_assignment and update.assigned_to is not None:
+            assignee = conn.execute(
+                "SELECT id FROM users WHERE id = ? AND role = 'reviewer' AND is_active = 1",
+                (update.assigned_to,),
+            ).fetchone()
+            if assignee is None:
+                raise HTTPException(status_code=422, detail="Assign the review to an active reviewer.")
+            conn.execute("UPDATE reviews SET assigned_to = ? WHERE id = ?", (update.assigned_to, review_id))
         if update.status is not None:
+            decided_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             conn.execute(
                 """
                 UPDATE reviews
-                SET status = ?, decision_note = ?, decided_at = ?
+                SET status = ?, decision_note = ?, decided_at = ?, decided_by = ?
                 WHERE id = ?
                 """,
                 (
                     update.status,
                     update.decision_note or "",
-                    datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    decided_at,
+                    actor["id"],
                     review_id,
                 ),
+            )
+            conn.execute(
+                """
+                INSERT INTO decision_events (review_id, user_id, status, note, decided_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (review_id, actor["id"], update.status, update.decision_note or "", decided_at),
             )
         elif update.decision_note is not None:
             conn.execute(
